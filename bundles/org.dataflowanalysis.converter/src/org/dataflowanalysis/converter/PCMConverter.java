@@ -166,7 +166,7 @@ public class PCMConverter extends Converter {
                 }
             }
         }
-        createForwardingAssignments();
+        createAssignments(flowGraphCollection);
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
 
@@ -217,17 +217,23 @@ public class PCMConverter extends Converter {
         return newFlow;
     }
     
-    private void createForwardingAssignments() {
-        for (Node node : dataFlowDiagram.getNodes()) {
-            var behaviour = node.getBehaviour();
-            for (Pin pin : behaviour.getOutPin()) {
-                var assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
-                assignment.setOutputPin(pin);
-                assignment.getInputPins()
-                        .addAll(behaviour.getInPin());
-                behaviour.getAssignment()
-                        .add(assignment);
-            }
+    private void createAssignments(FlowGraphCollection flowGraphCollection) {
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
+        	for (var vertex : transposeFlowGraph.getVertices()) {
+        		Node node = dfdNodeMap.get(vertex.getReferencedElement());
+	            var behaviour = node.getBehaviour();
+	            for (DataCharacteristic dataCharacteristic : vertex.getAllOutgoingDataCharacteristics()) {
+		            for (Pin pin : behaviour.getOutPin()) {		            	
+		                var assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+		                assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+		                assignment.setOutputPin(pin);
+		                assignment.getOutputLabels().addAll(dataCharacteristic.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());		                
+		                
+		                behaviour.getAssignment()
+		                        .add(assignment);
+		            }
+	        	}
+        	}
         }
     }
 
