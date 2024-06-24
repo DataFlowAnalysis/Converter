@@ -25,6 +25,7 @@ import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
+import org.dataflowanalysis.dfd.datadictionary.Assignment;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
 import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
 import org.dataflowanalysis.dfd.dataflowdiagram.DataFlowDiagram;
@@ -155,7 +156,7 @@ public class PCMTest extends ConverterTest{
         // This approach omits certain behaviors and labels that are not essential for visual representation.
         for (var behavior : dd.getBehaviour()) {
             for (var assignment : behavior.getAssignment()) {
-                assertTrue(assignment instanceof ForwardingAssignment);
+                assertTrue(assignment instanceof Assignment);
             }
         }
 
