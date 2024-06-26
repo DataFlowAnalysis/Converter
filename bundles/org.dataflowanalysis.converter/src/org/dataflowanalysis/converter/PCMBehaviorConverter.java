@@ -1,17 +1,21 @@
 package org.dataflowanalysis.converter;
 
+import de.uka.ipd.sdq.stoex.AbstractNamedReference;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.seff.CallingSEFFPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.CallingUserPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.UserPCMVertex;
 import org.dataflowanalysis.dfd.datadictionary.*;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.EnumCharacteristicType;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.Literal;
 import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.And;
 import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.False;
 import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.Or;
 import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.Term;
 import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.True;
 import org.dataflowanalysis.pcm.extension.model.confidentiality.ConfidentialityVariableCharacterisation;
+import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.LhsEnumCharacteristicReference;
 import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.NamedEnumCharacteristicReference;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.palladiosimulator.pcm.parameter.VariableUsage;
@@ -52,9 +56,37 @@ public class PCMBehaviorConverter {
             assignments.add(datadictionaryFactory.eINSTANCE.createForwardingAssignment());
         }
         for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
-            //TODO: Parse Term from CVS 
-            //TODO: Find Output Pin in DD 
-            //TODO: Input pins are refrenced DFV in CVS
+            Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+            var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
+
+            EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
+            Literal characteristicValue = leftHandSide.getLiteral();
+            AbstractNamedReference reference = variableCharacterisation.getVariableUsage_VariableCharacterisation()
+                    .getNamedReference__VariableUsage();
+
+            LabelType labelType = dataDictionary.getLabelTypes().stream()
+                    .filter(it -> it.getEntityName().equals(characteristicType.getName()))
+                    .findAny().orElseThrow();
+
+            Label label = labelType.getLabel().stream()
+                    .filter(it -> it.getEntityName().equals(characteristicValue.getName()))
+                    .findAny().orElseThrow();
+            assignment.getOutputLabels().add(label);
+
+            Term rightHandSide = variableCharacterisation.getRhs();
+            Pin outPin = node.getBehaviour().getOutPin().stream()
+                    .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                    .findAny().orElseThrow();
+            assignment.setOutputPin(outPin);
+            org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+            if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                assignment.setTerm(term);
+                Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                        .findAny().orElseThrow();
+                assignment.getInputPins().add(inPin);
+            }
+            assignments.add(assignment);
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
@@ -79,7 +111,6 @@ public class PCMBehaviorConverter {
             term.getTerms().add(PCMBehaviorConverter.parseTerm(and.getRight(), dataDictionary));
             return term;
         } else if (rightHandSide instanceof NamedEnumCharacteristicReference characteristicReference) {
-            // TODO: Add variable name to term
             LabelReference term = datadictionaryFactory.eINSTANCE.createLabelReference();
             LabelType labelType = dataDictionary.getLabelTypes().stream()
                     .filter(it -> it.getEntityName().equals(characteristicReference.getCharacteristicType().getName()))
@@ -88,7 +119,7 @@ public class PCMBehaviorConverter {
                     .filter(it -> it.getEntityName().equals(characteristicReference.getLiteral().getName()))
                     .findAny().orElseThrow();
             term.setLabel(label);
-            term.set
         }
+        throw new IllegalStateException();
     }
 }
