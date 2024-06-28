@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
 
 import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
 import org.dataflowanalysis.analysis.core.AbstractTransposeFlowGraph;
@@ -44,9 +46,10 @@ import org.palladiosimulator.pcm.usagemodel.Stop;
  */
 public class PCMConverter extends Converter {
 
-    private final Map<Entity, Node> dfdNodeMap = new HashMap<>();
+    private final Map<AbstractPCMVertex<?>, Node> dfdNodeMap = new HashMap<>();
     private DataDictionary dataDictionary;
     private DataFlowDiagram dataFlowDiagram;
+    private Set<String> takenIds = new HashSet<>();
 
     /**
      * Converts a PCM model into a DataFlowDiagramAndDictionary object.
@@ -169,8 +172,11 @@ public class PCMConverter extends Converter {
     }
 
     private void processSink(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	if (computeCompleteName(pcmVertex).equals("customer sends check out message")) {
+    		System.out.println("Test");
+    	}
     	Node node;
-    	if (dfdNodeMap.get(pcmVertex.getReferencedElement()) == null) {
+    	if (dfdNodeMap.get(pcmVertex) == null) {
     		node = getDFDNode(pcmVertex);
     	} else return;
     	
@@ -220,8 +226,8 @@ public class PCMConverter extends Converter {
     }
     
     private void createFlowForListOfCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex, List<String> intersectingDataCharacteristics) {
-    	var sourceNode = dfdNodeMap.get(sourceVertex.getReferencedElement());
-    	var destinationNode = dfdNodeMap.get(destinationVertex.getReferencedElement());
+    	var sourceNode = dfdNodeMap.get(sourceVertex);
+    	var destinationNode = dfdNodeMap.get(destinationVertex);
     	for (var dataCharacteristic : intersectingDataCharacteristics) {
     		var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
     		var inPin = destinationNode.getBehaviour().getInPin().stream().filter(pin -> pin.getEntityName().equals(dataCharacteristic)).toList().get(0);    		
@@ -238,8 +244,8 @@ public class PCMConverter extends Converter {
     }
     
     private void createEmptyFlowForNoDataCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
-    	var sourceNode = dfdNodeMap.get(sourceVertex.getReferencedElement());
-    	var destinationNode = dfdNodeMap.get(destinationVertex.getReferencedElement());
+    	var sourceNode = dfdNodeMap.get(sourceVertex);
+    	var destinationNode = dfdNodeMap.get(destinationVertex);
     	
     	var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
     	var inPin = datadictionaryFactory.eINSTANCE.createPin();
@@ -339,7 +345,7 @@ public class PCMConverter extends Converter {
     }
 
     private Node getDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
-        Node dfdNode = dfdNodeMap.get(pcmVertex.getReferencedElement());
+        Node dfdNode = dfdNodeMap.get(pcmVertex);
 
         if (dfdNode == null) {
             dfdNode = createDFDNode(pcmVertex);
@@ -352,7 +358,7 @@ public class PCMConverter extends Converter {
 
     private Node createDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
         Node dfdNode = createCorrespondingDFDNode(pcmVertex);
-        dfdNodeMap.put(pcmVertex.getReferencedElement(), dfdNode);
+        dfdNodeMap.put(pcmVertex, dfdNode);
         return dfdNode;
     }
 
@@ -371,9 +377,13 @@ public class PCMConverter extends Converter {
         Behaviour behaviour = datadictionaryFactory.eINSTANCE.createBehaviour();
 
         node.setEntityName(computeCompleteName(pcmVertex));
-        node.setId(pcmVertex.getReferencedElement()
-                .getId());
-
+        
+        var id = pcmVertex.getReferencedElement()
+                .getId();
+        if (takenIds.contains(id)) id += "_1";
+        
+        node.setId(id);
+        takenIds.add(id);
         node.setBehaviour(behaviour);
         dataDictionary.getBehaviour()
                 .add(behaviour);
