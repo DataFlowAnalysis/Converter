@@ -159,34 +159,115 @@ public class PCMConverter extends Converter {
         dataDictionary = datadictionaryFactory.eINSTANCE.createDataDictionary();
         dataFlowDiagram = dataflowdiagramFactory.eINSTANCE.createDataFlowDiagram();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-            Node previousNode = null;
-            for (AbstractVertex<?> abstractVertex : transposeFlowGraph.getVertices()) {            	
-                if (abstractVertex instanceof AbstractPCMVertex<?> abstractPCMVertex) {
-                    previousNode = processAbstractPCMVertex(abstractPCMVertex, previousNode);
-                }
-            }
+        	var sink = transposeFlowGraph.getSink();
+	    	 if (sink instanceof AbstractPCMVertex<?> abstractPCMVertex) {
+	         	processSink((AbstractPCMVertex<?>)sink);
+	         }
         }
-        createAssignments(flowGraphCollection);
+        System.out.println(dfdNodeMap.values().stream().filter(n -> n.getEntityName().equals("Ending addCustomer")).map(n -> n.getEntityName()).toList());
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
 
-    private Node processAbstractPCMVertex(AbstractPCMVertex<? extends Entity> pcmVertex, Node previousDFDNode) {
-        Node dfdNode = getDFDNode(pcmVertex);
+    private void processSink(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	Node node;
+    	if (dfdNodeMap.get(pcmVertex.getReferencedElement()) == null) {
+    		node = getDFDNode(pcmVertex);
+    	} else return;
+    	
+    	createPinsAndAssignementsFromVertex(node, pcmVertex);
 
-        createFlowBetweenPreviousAndCurrentNode(previousDFDNode, dfdNode, pcmVertex);
-
-        return dfdNode;
+    	pcmVertex.getPreviousElements().forEach(this::processSink);
+    	
+    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
+    }
+    
+    private void createPinsAndAssignementsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var behaviour = node.getBehaviour();
+    	pcmVertex.getAllIncomingDataCharacteristics().forEach(idc -> {
+    		var pin = datadictionaryFactory.eINSTANCE.createPin();
+    		pin.setEntityName(idc.getVariableName());
+    		behaviour.getInPin().add(pin);
+    	});
+    	pcmVertex.getAllOutgoingDataCharacteristics().forEach(odc -> {
+    		var pin = datadictionaryFactory.eINSTANCE.createPin();
+    		pin.setEntityName(odc.getVariableName());
+    		behaviour.getOutPin().add(pin);
+    		
+    		var assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+    		assignment.setEntityName(odc.getVariableName());
+    		assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+    		assignment.getOutputLabels().addAll(odc.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
+    		assignment.setOutputPin(pin);
+    		
+    		behaviour.getAssignment().add(assignment);
+    	});
+    }
+    
+    private void createFlow(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
+    	var intersectingDataCharacteristics = sourceVertex.getAllOutgoingDataCharacteristics().stream()
+    			.map(odc -> odc.getVariableName())
+    			.filter(odc -> {
+    				return destinationVertex.getAllIncomingDataCharacteristics().stream().map(idc -> idc.getVariableName()).toList().contains(odc);
+    			}).toList() ;  
+    	if (intersectingDataCharacteristics.size() == 0) {
+    		createEmptyFlowForNoDataCharacteristics(sourceVertex, destinationVertex);
+    	} else {
+    		createFlowForListOfCharacteristics(sourceVertex, destinationVertex, intersectingDataCharacteristics);
+    	}
+    	
+    	
+    	
+    }
+    
+    private void createFlowForListOfCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex, List<String> intersectingDataCharacteristics) {
+    	var sourceNode = dfdNodeMap.get(sourceVertex.getReferencedElement());
+    	var destinationNode = dfdNodeMap.get(destinationVertex.getReferencedElement());
+    	for (var dataCharacteristic : intersectingDataCharacteristics) {
+    		var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
+    		var inPin = destinationNode.getBehaviour().getInPin().stream().filter(pin -> pin.getEntityName().equals(dataCharacteristic)).toList().get(0);    		
+    		var outPin = sourceNode.getBehaviour().getOutPin().stream().filter(pin -> pin.getEntityName().equals(dataCharacteristic)).toList().get(0);
+    		
+    		flow.setEntityName(dataCharacteristic);
+    		flow.setDestinationNode(destinationNode);
+    		flow.setSourceNode(sourceNode);
+    		flow.setDestinationPin(inPin);
+    		flow.setSourcePin(outPin);
+    		
+    		dataFlowDiagram.getFlows().add(flow);
+    	}     	
+    }
+    
+    private void createEmptyFlowForNoDataCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
+    	var sourceNode = dfdNodeMap.get(sourceVertex.getReferencedElement());
+    	var destinationNode = dfdNodeMap.get(destinationVertex.getReferencedElement());
+    	
+    	var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
+    	var inPin = datadictionaryFactory.eINSTANCE.createPin();
+    	var outPin = datadictionaryFactory.eINSTANCE.createPin();
+    	
+    	inPin.setEntityName("");
+    	outPin.setEntityName("");
+    	
+    	flow.setDestinationNode(destinationNode);
+    	flow.setSourceNode(sourceNode);
+    	flow.setDestinationPin(inPin);
+    	flow.setSourcePin(outPin);
+    	flow.setEntityName("");
+    	dataFlowDiagram.getFlows().add(flow);
+    	
+    	sourceNode.getBehaviour().getOutPin().add(outPin);
+    	destinationNode.getBehaviour().getInPin().add(inPin);
     }
 
     private void createFlowBetweenPreviousAndCurrentNode(Node source, Node dest, AbstractPCMVertex<? extends Entity> pcmVertex) {
         if (source == null || dest == null) {
             return;
         }
-        List<DataCharacteristic> dataCharacteristics = pcmVertex.getAllDataCharacteristics();
+        List<DataCharacteristic> dataCharacteristics = pcmVertex.getAllIncomingDataCharacteristics();
         if (dataCharacteristics.size() == 0) findOrCreateFlow(source, dest, "");
         for (DataCharacteristic dataCharacteristic : dataCharacteristics) {
             findOrCreateFlow(source, dest, dataCharacteristic.variableName());
-        }   
+        } 
     }
 
     private void findOrCreateFlow(Node source, Node dest, String flowName) {
@@ -217,25 +298,8 @@ public class PCMConverter extends Converter {
         return newFlow;
     }
     
-    private void createAssignments(FlowGraphCollection flowGraphCollection) {
-        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	for (var vertex : transposeFlowGraph.getVertices()) {
-        		Node node = dfdNodeMap.get(vertex.getReferencedElement());
-	            var behaviour = node.getBehaviour();
-	            for (DataCharacteristic dataCharacteristic : vertex.getAllOutgoingDataCharacteristics()) {
-		            for (Pin pin : behaviour.getOutPin()) {		            	
-		                var assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-		                assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
-		                assignment.setOutputPin(pin);
-		                assignment.getOutputLabels().addAll(dataCharacteristic.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());		                
-		                
-		                behaviour.getAssignment()
-		                        .add(assignment);
-		            }
-	        	}
-        	}
-        }
-    }
+   
+    
 
     // A pin is equivalent if the same parameters are passed
     private Pin findOutputPin(Node source, String parameters) {

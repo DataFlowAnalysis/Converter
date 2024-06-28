@@ -1,5 +1,6 @@
 package org.dataflowanalysis.converter.tests;
 
+import static org.dataflowanalysis.analysis.tests.AnalysisUtils.TEST_MODEL_PROJECT_NAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,8 +24,11 @@ import org.dataflowanalysis.analysis.core.AbstractVertex;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
 import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
+import org.dataflowanalysis.analysis.dfd.DFDDataFlowAnalysisBuilder;
+import org.dataflowanalysis.analysis.dfd.core.*;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
+
 import org.dataflowanalysis.dfd.datadictionary.Assignment;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
 import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
@@ -46,7 +50,7 @@ public class PCMTest extends ConverterTest{
 	@Test
     @DisplayName("Test PCM2DFD MaaS")
     public void maasToDfd() {
-        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "maas.json", null);
+        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\Maas.json", null);
     }
 	
 	@Test
@@ -103,15 +107,32 @@ public class PCMTest extends ConverterTest{
         if (complete == null) {
             complete = new PCMConverter().pcmToDFD(modelLocation, usageModelPath, allocationPath, nodeCharPath, Activator.class);
         }
+        
+        var test = complete.dataFlowDiagram().getNodes().stream().filter(n -> n.getEntityName().equals("Ending addCustomer")).toList();
 
         if (webTarget != null) {
             var dfdConverter = new DataFlowDiagramConverter();
             var web = dfdConverter.dfdToWeb(complete);
             dfdConverter.storeWeb(web, webTarget);
         }
+        
+        flowGraph.getTransposeFlowGraphs().forEach(tfg -> {
+        	tfg.getVertices().forEach(v -> {
+        		v.getAllOutgoingDataCharacteristics().forEach(dc -> {
+        			if (dc.getVariableName().equals("staffAuthenticationCredentials")) {
+        				System.out.println();
+        			};
+        			assert(!dc.getAllCharacteristics().isEmpty());
+        		});
+        	});
+        });
 
         DataFlowDiagram dfd = complete.dataFlowDiagram();
         var dd = complete.dataDictionary();
+        
+        var t = new DFDTransposeFlowGraphFinder(dd, dfd);
+        var fg = t.findTransposeFlowGraphs();
+        
 
         assertEquals(dfd.getNodes()
                 .size(),
