@@ -50,7 +50,7 @@ public class PCMTest extends ConverterTest{
 	@Test
     @DisplayName("Test PCM2DFD MaaS")
     public void maasToDfd() {
-        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\Maas.json", null);
+        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\Maas_2.json", null);
     }
 	
 	@Test
