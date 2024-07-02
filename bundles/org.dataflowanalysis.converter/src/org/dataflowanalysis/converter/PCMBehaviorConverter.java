@@ -34,15 +34,16 @@ public class PCMBehaviorConverter {
         if (pcmVertex.getReferencedElement() instanceof SetVariableAction setVariableAction) {
             variableCharacterisations.addAll(setVariableAction.getLocalVariableUsages_SetVariableAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
-        && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex && callingSEFFPCMVertex.isCalling()) {
+                && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
+                && callingSEFFPCMVertex.isCalling()) {
             variableCharacterisations.addAll(externalCallAction.getInputVariableUsages__CallAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
                 && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
                 && callingSEFFPCMVertex.isReturning()) {
             variableCharacterisations.addAll(externalCallAction.getReturnVariableUsage__CallReturnAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
-        && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
-        && callingUserPCMVertex.isCalling()) {
+                && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
+                && callingUserPCMVertex.isCalling()) {
             variableCharacterisations.addAll(entryLevelSystemCall.getInputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
                 && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
@@ -56,37 +57,56 @@ public class PCMBehaviorConverter {
             assignments.add(datadictionaryFactory.eINSTANCE.createForwardingAssignment());
         }
         for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
-            Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
             var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
 
             EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
             Literal characteristicValue = leftHandSide.getLiteral();
             AbstractNamedReference reference = variableCharacterisation.getVariableUsage_VariableCharacterisation()
                     .getNamedReference__VariableUsage();
-
-            LabelType labelType = dataDictionary.getLabelTypes().stream()
-                    .filter(it -> it.getEntityName().equals(characteristicType.getName()))
-                    .findAny().orElseThrow();
-
-            Label label = labelType.getLabel().stream()
-                    .filter(it -> it.getEntityName().equals(characteristicValue.getName()))
-                    .findAny().orElseThrow();
-            assignment.getOutputLabels().add(label);
+            
 
             Term rightHandSide = variableCharacterisation.getRhs();
-            Pin outPin = node.getBehaviour().getOutPin().stream()
-                    .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
-                    .findAny().orElseThrow();
-            assignment.setOutputPin(outPin);
-            org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
-            if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
-                assignment.setTerm(term);
-                Pin inPin = node.getBehaviour().getInPin().stream()
-                        .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+            
+            if (characteristicType == null && characteristicValue == null) {
+            	ForwardingAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+                Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
                         .findAny().orElseThrow();
-                assignment.getInputPins().add(inPin);
+                assignment.setOutputPin(outPin);     
+                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                    Pin inPin = node.getBehaviour().getInPin().stream()
+                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                            .findAny().orElseThrow();
+                    assignment.getInputPins().add(inPin);
+                }
+                assignments.add(assignment);
+            } else if (characteristicType == null) {
+            	throw new IllegalStateException("Forwarding of specific label types not supported");
+            } else {
+                Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+            	LabelType labelType = dataDictionary.getLabelTypes().stream()
+                        .filter(it -> it.getEntityName().equals(characteristicType.getName()))
+                        .findAny().orElseThrow();
+
+                Label label = labelType.getLabel().stream()
+                        .filter(it -> it.getEntityName().equals(characteristicValue.getName()))
+                        .findAny().orElseThrow();
+                assignment.getOutputLabels().add(label);
+
+                Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                        .findAny().orElseThrow();
+                assignment.setOutputPin(outPin);
+                org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                    assignment.setTerm(term);
+                    Pin inPin = node.getBehaviour().getInPin().stream()
+                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                            .findAny().orElseThrow();
+                    assignment.getInputPins().add(inPin);
+                }
+                assignments.add(assignment);
             }
-            assignments.add(assignment);
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
