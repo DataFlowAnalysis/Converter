@@ -400,7 +400,23 @@ public class PCMConverter extends Converter {
         Behaviour behaviour = EcoreUtil.copy(node.getBehaviour());
         List<AbstractAssignment> assignments = new ArrayList<>();
         if (!(pcmVertex instanceof UserPCMVertex<?> vertex && vertex.getReferencedElement() instanceof Start)) {
-            assignments.add(datadictionaryFactory.eINSTANCE.createForwardingAssignment());
+        	if (pcmVertex.getAllIncomingDataCharacteristics().isEmpty()) {
+        		// TODO: How to handle pcm start vertices with no incoming characteristics
+        		// (e.g no meaningful assignments)
+        		
+        	}
+        	for(var dataCharacteristics : pcmVertex.getAllIncomingDataCharacteristics()) {
+            	AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+            	Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
+                        .findAny().orElseThrow();
+            	Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
+                        .findAny().orElseThrow();
+            	assignment.getInputPins().add(inPin);
+            	assignment.setOutputPin(outPin);
+                assignments.add(assignment);
+        	}
         }
         for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
             var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
