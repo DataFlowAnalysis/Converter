@@ -3,6 +3,7 @@ package org.dataflowanalysis.converter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.HashSet;
@@ -12,6 +13,7 @@ import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
 import org.dataflowanalysis.analysis.core.AbstractTransposeFlowGraph;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
+import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.seff.CallingSEFFPCMVertex;
@@ -181,14 +183,10 @@ public class PCMConverter extends Converter {
 	         	processSink((AbstractPCMVertex<?>)sink);
 	         }
         }
-        System.out.println(dfdNodeMap.values().stream().filter(n -> n.getEntityName().equals("Ending addCustomer")).map(n -> n.getEntityName()).toList());
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
 
     private void processSink(AbstractPCMVertex<? extends Entity> pcmVertex) {
-    	if (computeCompleteName(pcmVertex).equals("customer sends check out message")) {
-    		System.out.println("Test");
-    	}
     	Node node;
     	if (dfdNodeMap.get(pcmVertex) == null) {
     		node = getDFDNode(pcmVertex);
@@ -397,26 +395,68 @@ public class PCMConverter extends Converter {
             variableCharacterisations.addAll(entryLevelSystemCall.getOutputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         }
 
-        Behaviour behaviour = EcoreUtil.copy(node.getBehaviour());
+        Behaviour behaviour = node.getBehaviour();
         List<AbstractAssignment> assignments = new ArrayList<>();
         if (!(pcmVertex instanceof UserPCMVertex<?> vertex && vertex.getReferencedElement() instanceof Start)) {
         	if (pcmVertex.getAllIncomingDataCharacteristics().isEmpty()) {
-        		// TODO: How to handle pcm start vertices with no incoming characteristics
-        		// (e.g no meaningful assignments)
-        		
+        		pcmVertex.getAllOutgoingDataCharacteristics().forEach(it -> {
+        			Pin outPin = node.getBehaviour().getOutPin().stream()
+                            .filter(pin -> pin.getEntityName().equals(it.getVariableName()))
+                            .findAny().orElseThrow();
+        			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+        			assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+        			assignment.setOutputPin(outPin);
+        			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
+        		});
         	}
+        	Set<Pin> occupied = new HashSet<>();
+        	Set<DataCharacteristic> returns = new HashSet<>();
         	for(var dataCharacteristics : pcmVertex.getAllIncomingDataCharacteristics()) {
-            	AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+        		if (dataCharacteristics.getVariableName().equals("RETURN")) {
+        			returns.add(dataCharacteristics);
+        			continue;
+        		}
+        		
+            	AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
             	Pin inPin = node.getBehaviour().getInPin().stream()
                         .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
                         .findAny().orElseThrow();
-            	Pin outPin = node.getBehaviour().getOutPin().stream()
+            	try {
+            		Pin outPin = node.getBehaviour().getOutPin().stream()
                         .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
                         .findAny().orElseThrow();
-            	assignment.getInputPins().add(inPin);
-            	assignment.setOutputPin(outPin);
-                assignments.add(assignment);
+            		assignment.getInputPins().add(inPin);
+                	assignment.setOutputPin(outPin);
+                	occupied.add(outPin);
+                    assignments.add(assignment);
+            	} catch (NoSuchElementException e) {
+            		continue;
+            	}            	
         	}
+        	
+        	returns.forEach(dataCharacteristic -> {
+        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();    
+        		Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(dataCharacteristic.getVariableName()))
+                        .findAny().orElseThrow();
+        		Pin outPin;
+        		try {
+        			outPin = node.getBehaviour().getOutPin().stream()
+        				.filter(it -> !occupied.contains(it))
+                        .filter(it -> it.getEntityName().equals("RETURN"))
+                        .findAny()
+                        .orElseThrow();
+        		} catch (NoSuchElementException e) {
+        			outPin = node.getBehaviour().getOutPin().stream()
+            				.filter(it -> !occupied.contains(it))                            
+                            .findAny()
+                            .orElseThrow();
+            	}            	
+        		occupied.add(outPin);
+        		assignment.getInputPins().add(inPin);
+            	assignment.setOutputPin(outPin);
+            	assignments.add(assignment);
+        	});
         }
         for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
             var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
@@ -466,13 +506,14 @@ public class PCMConverter extends Converter {
                             .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                             .findAny().orElseThrow();
                     assignment.getInputPins().add(inPin);
+                } else {
+                	System.out.println("Theres the culprit");
                 }
                 assignments.add(assignment);
             }
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
-        node.setBehaviour(behaviour);
     }
 
     public org.dataflowanalysis.dfd.datadictionary.Term parseTerm(Term rightHandSide, DataDictionary dataDictionary) {
