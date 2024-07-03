@@ -1,6 +1,5 @@
 package org.dataflowanalysis.converter.tests;
 
-import static org.dataflowanalysis.analysis.tests.AnalysisUtils.TEST_MODEL_PROJECT_NAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,7 +14,6 @@ import java.util.HashSet;
 import java.util.stream.Collectors;
 
 import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
-import org.dataflowanalysis.converter.DataFlowDiagramAndDictionary;
 import org.dataflowanalysis.converter.DataFlowDiagramConverter;
 import org.dataflowanalysis.converter.PCMConverter;
 import org.dataflowanalysis.examplemodels.Activator;
@@ -24,63 +22,39 @@ import org.dataflowanalysis.analysis.core.AbstractVertex;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
 import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
-import org.dataflowanalysis.analysis.dfd.DFDDataFlowAnalysisBuilder;
-import org.dataflowanalysis.analysis.dfd.core.*;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
-
-import org.dataflowanalysis.dfd.datadictionary.Assignment;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
 import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
-import org.dataflowanalysis.dfd.dataflowdiagram.DataFlowDiagram;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import tools.mdsd.library.standalone.initialization.StandaloneInitializationException;
 
 public class PCMTest extends ConverterTest{
     @Test
     @DisplayName("Test PCM2DFD TravelPlanner")
     public void travelToDfd() {
-        testSpecificModel("TravelPlanner", "travelPlanner", TEST_MODELS, null, null);
+        testSpecificModel("TravelPlanner", "travelPlanner", TEST_MODELS, "tp.json");
     }
 	
 	@Test
     @DisplayName("Test PCM2DFD MaaS")
     public void maasToDfd() {
-        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\Maas_2.json", null);
+        testSpecificModel("MaaS_Ticket_System_base", "MaaS", TEST_MODELS, "maas.json");
     }
 	
 	@Test
     @DisplayName("Test PCM2DFD CWA")
     public void cwaToDfd() {
-        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "cwa.json", null);
-    }
-
-    @Test
-    @Disabled("There is currently no manually converted pcm model")
-    @DisplayName("Test manual Palladio to DFD")
-    public void manualPCMToDfd() throws StandaloneInitializationException {
-        String inputModel = "InternationalOnlineShop";
-        String inputFile = "default";
-        String dataflowdiagram = Paths.get("models", "OnlineShopDFD", "onlineshop.dataflowdiagram")
-                .toString();
-        String datadictionary = Paths.get("models", "OnlineShopDFD", "onlineshop.datadictionary")
-                .toString();
-        testSpecificModel(inputModel, inputFile, TEST_MODELS, null,
-                new DataFlowDiagramConverter().loadDFD(TEST_MODELS, dataflowdiagram, datadictionary, Activator.class));
-
+        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "cwa.json");
     }
     
-    private void testSpecificModel(String inputModel, String inputFile, String modelLocation, String webTarget,
-            DataFlowDiagramAndDictionary complete) {
-        final var usageModelPath = Paths.get("models", inputModel, inputFile + ".usagemodel")
+    private void testSpecificModel(String inputModel, String inputFile, String modelLocation, String webTarget) {
+        final var usageModelPath = Paths.get("casestudies", inputModel, inputFile + ".usagemodel")
                 .toString();
-        final var allocationPath = Paths.get("models", inputModel, inputFile + ".allocation")
+        final var allocationPath = Paths.get("casestudies", inputModel, inputFile + ".allocation")
                 .toString();
-        final var nodeCharPath = Paths.get("models", inputModel, inputFile + ".nodecharacteristics")
+        final var nodeCharPath = Paths.get("casestudies", inputModel, inputFile + ".nodecharacteristics")
                 .toString();
 
         DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
@@ -104,35 +78,15 @@ public class PCMTest extends ConverterTest{
             }
         }
 
-        if (complete == null) {
-            complete = new PCMConverter().pcmToDFD(modelLocation, usageModelPath, allocationPath, nodeCharPath, Activator.class);
-        }
         
-        var test = complete.dataFlowDiagram().getNodes().stream().filter(n -> n.getEntityName().equals("Ending addCustomer")).toList();
+        var complete = new PCMConverter().pcmToDFD(modelLocation, usageModelPath, allocationPath, nodeCharPath, Activator.class);
 
-        if (webTarget != null) {
-            var dfdConverter = new DataFlowDiagramConverter();
-            var web = dfdConverter.dfdToWeb(complete);
-            dfdConverter.storeWeb(web, webTarget);
-        }
-        
-        flowGraph.getTransposeFlowGraphs().forEach(tfg -> {
-        	tfg.getVertices().forEach(v -> {
-        		v.getAllOutgoingDataCharacteristics().forEach(dc -> {
-        			if (dc.getVariableName().equals("staffAuthenticationCredentials")) {
-        				System.out.println();
-        			};
-        			assert(!dc.getAllCharacteristics().isEmpty());
-        		});
-        	});
-        });
+        var dfdConverter = new DataFlowDiagramConverter();
+        var web = dfdConverter.dfdToWeb(complete);
+        dfdConverter.storeWeb(web, webTarget);
 
-        DataFlowDiagram dfd = complete.dataFlowDiagram();
+        var dfd = complete.dataFlowDiagram();
         var dd = complete.dataDictionary();
-        
-        var t = new DFDTransposeFlowGraphFinder(dd, dfd);
-        var fg = t.findTransposeFlowGraphs();
-        
 
         assertEquals(dfd.getNodes()
                 .size(),
@@ -154,9 +108,9 @@ public class PCMTest extends ConverterTest{
         }
 
         Set<String> flowNames = new HashSet<>();
-        for (AbstractTransposeFlowGraph as : flowGraph.getTransposeFlowGraphs()) {
+        for (AbstractTransposeFlowGraph abstractTransposeFlowGraph : flowGraph.getTransposeFlowGraphs()) {
             AbstractVertex<?> previousAse = null;
-            for (AbstractVertex<?> ase : as.getVertices()) {
+            for (AbstractVertex<?> ase : abstractTransposeFlowGraph.getVertices()) {
                 if(!ase.getPreviousElements().isEmpty()) {
                     List<DataCharacteristic> variables = ase.getAllDataCharacteristics();
                     if (variables.isEmpty()) flowNames.add(previousAse.hashCode()+ase.hashCode()+"");
@@ -177,7 +131,7 @@ public class PCMTest extends ConverterTest{
         // This approach omits certain behaviors and labels that are not essential for visual representation.
         for (var behavior : dd.getBehaviour()) {
             for (var assignment : behavior.getAssignment()) {
-                assertTrue(assignment instanceof Assignment);
+                assertTrue(assignment instanceof ForwardingAssignment);
             }
         }
 
