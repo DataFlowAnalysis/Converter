@@ -482,8 +482,39 @@ public class PCMConverter extends Converter {
                     assignment.getInputPins().add(inPin);
                 }
                 assignments.add(assignment);
-            } else if (characteristicType == null) {
-            	throw new IllegalStateException("Forwarding of specific label types not supported");
+            } else if (characteristicValue == null) {
+            	List<DataCharacteristic> forwardedValues = pcmVertex.getAllIncomingDataCharacteristics().stream()
+            			.filter(it -> it.getVariableName().equals(reference.getReferenceName()))
+            			.filter(it -> it.getAllCharacteristics().stream().anyMatch(dc -> dc.getTypeName().equals(characteristicType.getName())))
+            			.toList();
+            	for (DataCharacteristic forwardedValue : forwardedValues) {
+            		for(CharacteristicValue forwardedCharacterisicValue : forwardedValue.getAllCharacteristics()) {
+            			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+                		LabelType labelType = dataDictionary.getLabelTypes().stream()
+                                .filter(it -> it.getEntityName().equals(characteristicType.getName()))
+                                .findAny().orElseThrow();
+
+                        Label label = labelType.getLabel().stream()
+                                .filter(it -> it.getEntityName().equals(forwardedCharacterisicValue.getTypeName()))
+                                .findAny().orElseThrow();
+                        assignment.getOutputLabels().add(label);
+
+                        Pin outPin = node.getBehaviour().getOutPin().stream()
+                                .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                                .findAny().orElseThrow();
+                        assignment.setOutputPin(outPin);
+                        org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                        if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                            assignment.setTerm(term);
+                            Pin inPin = node.getBehaviour().getInPin().stream()
+                                    .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                                    .findAny().orElseThrow();
+                            assignment.getInputPins().add(inPin);
+                        } else {
+                        	// This case occurs, when term is true (so no dependence on input pin)
+                        }
+            		}
+            	}
             } else {
                 Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
             	LabelType labelType = dataDictionary.getLabelTypes().stream()
