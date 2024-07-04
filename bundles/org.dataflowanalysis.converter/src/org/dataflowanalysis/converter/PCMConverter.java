@@ -504,8 +504,8 @@ public class PCMConverter extends Converter {
                                 .findAny().orElseThrow();
                         assignment.setOutputPin(outPin);
                         org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                        assignment.setTerm(term);
                         if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
-                            assignment.setTerm(term);
                             Pin inPin = node.getBehaviour().getInPin().stream()
                                     .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                                     .findAny().orElseThrow();
@@ -531,8 +531,8 @@ public class PCMConverter extends Converter {
                         .findAny().orElseThrow();
                 assignment.setOutputPin(outPin);
                 org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                assignment.setTerm(term);
                 if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
-                    assignment.setTerm(term);
                     Pin inPin = node.getBehaviour().getInPin().stream()
                             .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                             .findAny().orElseThrow();
