@@ -193,12 +193,16 @@ public class PCMConverter extends Converter {
     	} else return;
     	
     	createPinsAndAssignementsFromVertex(node, pcmVertex);
-    	convertBehavior(pcmVertex, node, dataDictionary);
+    	convertBehavior(pcmVertex, node, dataDictionary);   	
     	
 
     	pcmVertex.getPreviousElements().forEach(this::processSink);
     	
     	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
+    	
+    	if (pcmVertex.getReferencedElement().getEntityName().equals("RetrieveData")) {
+    		System.out.println("Test");
+    	};
     }
     
     private void createPinsAndAssignementsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
@@ -446,11 +450,15 @@ public class PCMConverter extends Converter {
                         .filter(it -> it.getEntityName().equals("RETURN"))
                         .findAny()
                         .orElseThrow();
-        		} catch (NoSuchElementException e) {
+        		} catch (NoSuchElementException e) { 
+        			try { //TODO: Talk with Felix about
         			outPin = node.getBehaviour().getOutPin().stream()
             				.filter(it -> !occupied.contains(it))                            
                             .findAny()
                             .orElseThrow();
+        			} catch (NoSuchElementException e2) {
+        				return;
+        			}
             	}            	
         		occupied.add(outPin);
         		assignment.getInputPins().add(inPin);
@@ -474,12 +482,17 @@ public class PCMConverter extends Converter {
                 Pin outPin = node.getBehaviour().getOutPin().stream()
                         .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
                         .findAny().orElseThrow();
-                assignment.setOutputPin(outPin);     
+                assignment.setOutputPin(outPin);    
+                Pin inPin;
+                try {
                 if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
-                    Pin inPin = node.getBehaviour().getInPin().stream()
+                    inPin = node.getBehaviour().getInPin().stream()
                             .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                             .findAny().orElseThrow();
                     assignment.getInputPins().add(inPin);
+                }
+                } catch (Exception e) {
+                	System.out.println(pcmVertex);
                 }
                 assignments.add(assignment);
             } else if (characteristicValue == null) {
