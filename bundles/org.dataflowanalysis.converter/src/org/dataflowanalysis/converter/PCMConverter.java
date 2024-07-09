@@ -37,7 +37,6 @@ import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionar
 import org.dataflowanalysis.pcm.extension.model.confidentiality.ConfidentialityVariableCharacterisation;
 import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.NamedEnumCharacteristicReference;
 import org.eclipse.core.runtime.Plugin;
-import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.palladiosimulator.pcm.core.entity.Entity;
 import org.palladiosimulator.pcm.parameter.VariableUsage;
 import org.palladiosimulator.pcm.seff.*;
@@ -66,6 +65,7 @@ public class PCMConverter extends Converter {
     private DataDictionary dataDictionary;
     private DataFlowDiagram dataFlowDiagram;
     private Set<String> takenIds = new HashSet<>();
+    private Map<AbstractPCMVertex<?>, List<AbstractPCMVertex<?>>> testMap = new HashMap<>();
 
     /**
      * Converts a PCM model into a DataFlowDiagramAndDictionary object.
@@ -183,6 +183,12 @@ public class PCMConverter extends Converter {
 	         	processSink((AbstractPCMVertex<?>)sink);
 	         }
         }
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
+        	var sink = transposeFlowGraph.getSink();
+	    	 if (sink instanceof AbstractPCMVertex<?> abstractPCMVertex) {
+	         	processSink2((AbstractPCMVertex<?>)sink);
+	         }
+        }
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
 
@@ -192,20 +198,32 @@ public class PCMConverter extends Converter {
     		node = getDFDNode(pcmVertex);
     	} else return;
     	
-    	createPinsAndAssignementsFromVertex(node, pcmVertex);
-    	convertBehavior(pcmVertex, node, dataDictionary);   	
+    	createPinsFromVertex(node, pcmVertex);
+    		
     	
 
     	pcmVertex.getPreviousElements().forEach(this::processSink);
     	
     	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
     	
-    	if (pcmVertex.getReferencedElement().getEntityName().equals("RetrieveData")) {
-    		System.out.println("Test");
-    	};
+    	pcmVertex.getPreviousElements().forEach(previousElement -> {
+    		if(testMap.get(previousElement) == null) {
+    			testMap.put(previousElement, new ArrayList<>());
+    		}
+    		testMap.get(previousElement).add(pcmVertex);
+    	});
+    	  	
+    	
+    	//convertBehavior(pcmVertex, node, dataDictionary);   
     }
     
-    private void createPinsAndAssignementsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
+    private void processSink2(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var node = getDFDNode(pcmVertex);
+    	convertBehavior(pcmVertex, node, dataDictionary);
+    	pcmVertex.getPreviousElements().forEach(this::processSink2);
+    }
+    
+    private void createPinsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
     	var behaviour = node.getBehaviour();
     	pcmVertex.getAllIncomingDataCharacteristics().forEach(idc -> {
     		var pin = datadictionaryFactory.eINSTANCE.createPin();
@@ -215,15 +233,7 @@ public class PCMConverter extends Converter {
     	pcmVertex.getAllOutgoingDataCharacteristics().forEach(odc -> {
     		var pin = datadictionaryFactory.eINSTANCE.createPin();
     		pin.setEntityName(odc.getVariableName());
-    		behaviour.getOutPin().add(pin);
-    		
-    		var assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-    		assignment.setEntityName(odc.getVariableName());
-    		assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
-    		assignment.getOutputLabels().addAll(odc.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
-    		assignment.setOutputPin(pin);
-    		
-    		behaviour.getAssignment().add(assignment);
+    		behaviour.getOutPin().add(pin);    		
     	});
     }
     
@@ -237,10 +247,13 @@ public class PCMConverter extends Converter {
     		createEmptyFlowForNoDataCharacteristics(sourceVertex, destinationVertex);
     	} else {
     		createFlowForListOfCharacteristics(sourceVertex, destinationVertex, intersectingDataCharacteristics);
+    	}   
+    	
+    	var node = dfdNodeMap.get(sourceVertex);
+
+    	if (node.getBehaviour().getOutPin().isEmpty()) {
+    		System.out.println("Test");
     	}
-    	
-    	
-    	
     }
     
     private void createFlowForListOfCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex, List<String> intersectingDataCharacteristics) {
@@ -342,6 +355,17 @@ public class PCMConverter extends Converter {
             }
         }
     }
+    
+    private LabelType getOrCreateLabelType(String name) {
+    	 LabelType type = dataDictionary.getLabelTypes()
+                 .stream()
+                 .filter(f -> f.getEntityName()
+                         .equals(name))
+                 .findFirst()
+                 .orElseGet(() -> createLabelType(name));
+    	 
+    	 return type;
+    }
 
     private Label getOrCreateDFDLabel(CharacteristicValue charValue) {
         LabelType type = dataDictionary.getLabelTypes()
@@ -360,6 +384,17 @@ public class PCMConverter extends Converter {
 
         return label;
     }
+    
+    private Label getOrCreateDFDLabel(String labelName, LabelType type) {
+        Label label = type.getLabel()
+                .stream()
+                .filter(f -> f.getEntityName()
+                        .equals(labelName))
+                .findFirst()
+                .orElseGet(() -> createLabel(labelName, type));
+
+        return label;
+    }
 
     private Label createLabel(CharacteristicValue charValue, LabelType type) {
         Label label = datadictionaryFactory.eINSTANCE.createLabel();
@@ -368,10 +403,26 @@ public class PCMConverter extends Converter {
                 .add(label);
         return label;
     }
+    
+    private Label createLabel(String name, LabelType type) {
+        Label label = datadictionaryFactory.eINSTANCE.createLabel();
+        label.setEntityName(name);
+        type.getLabel()
+                .add(label);
+        return label;
+    }
 
     private LabelType createLabelType(CharacteristicValue charValue) {
         LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
         type.setEntityName(charValue.getTypeName());
+        this.dataDictionary.getLabelTypes()
+                .add(type);
+        return type;
+    }
+    
+    private LabelType createLabelType(String name) {
+        LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
+        type.setEntityName(name);
         this.dataDictionary.getLabelTypes()
                 .add(type);
         return type;
@@ -426,16 +477,25 @@ public class PCMConverter extends Converter {
                         .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
                         .findAny().orElseThrow();
             	try {
-            		Pin outPin = node.getBehaviour().getOutPin().stream()
-                        .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
-                        .findAny().orElseThrow();
-            		assignment.getInputPins().add(inPin);
-                	assignment.setOutputPin(outPin);
-                	occupied.add(outPin);
-                    assignments.add(assignment);
-            	} catch (NoSuchElementException e) {
-            		continue;
-            	}            	
+        		Pin outPin = node.getBehaviour().getOutPin().stream()
+                    .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
+                    .findAny()
+                    .orElse(null);
+        		if (outPin == null) {
+        			outPin = node.getBehaviour().getOutPin().stream()
+                            .filter(it -> it.getEntityName().equals(""))
+                            .findAny()
+                            .orElseThrow();
+        		}
+        		assignment.getInputPins().add(inPin);
+            	assignment.setOutputPin(outPin);
+            	occupied.add(outPin);
+                assignments.add(assignment);
+            	} catch (Exception e) {
+            		var testMapEntry = testMap.get(pcmVertex);
+            		System.out.println("Test");
+            	}
+            	             	
         	}
         	
         	returns.forEach(dataCharacteristic -> {
@@ -450,6 +510,7 @@ public class PCMConverter extends Converter {
                         .filter(it -> it.getEntityName().equals("RETURN"))
                         .findAny()
                         .orElseThrow();
+            		occupied.add(outPin);
         		} catch (NoSuchElementException e) { 
         			try { //TODO: Talk with Felix about
         			outPin = node.getBehaviour().getOutPin().stream()
@@ -460,7 +521,6 @@ public class PCMConverter extends Converter {
         				return;
         			}
             	}            	
-        		occupied.add(outPin);
         		assignment.getInputPins().add(inPin);
             	assignment.setOutputPin(outPin);
             	assignments.add(assignment);
@@ -484,16 +544,15 @@ public class PCMConverter extends Converter {
                         .findAny().orElseThrow();
                 assignment.setOutputPin(outPin);    
                 Pin inPin;
-                try {
-                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+               
+                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {                	 
                     inPin = node.getBehaviour().getInPin().stream()
-                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()) || 
+                            		it.getEntityName().equals(""))
                             .findAny().orElseThrow();
-                    assignment.getInputPins().add(inPin);
+                    assignment.getInputPins().add(inPin);	                
                 }
-                } catch (Exception e) {
-                	System.out.println(pcmVertex);
-                }
+                
                 assignments.add(assignment);
             } else if (characteristicValue == null) {
             	List<DataCharacteristic> forwardedValues = pcmVertex.getAllIncomingDataCharacteristics().stream()
@@ -530,13 +589,9 @@ public class PCMConverter extends Converter {
             	}
             } else {
                 Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-            	LabelType labelType = dataDictionary.getLabelTypes().stream()
-                        .filter(it -> it.getEntityName().equals(characteristicType.getName()))
-                        .findAny().orElseThrow();
+            	LabelType labelType = getOrCreateLabelType(characteristicType.getName());
 
-                Label label = labelType.getLabel().stream()
-                        .filter(it -> it.getEntityName().equals(characteristicValue.getName()))
-                        .findAny().orElseThrow();
+                Label label = getOrCreateDFDLabel(characteristicValue.getName(), labelType);
                 assignment.getOutputLabels().add(label);
 
                 Pin outPin = node.getBehaviour().getOutPin().stream()
@@ -550,9 +605,7 @@ public class PCMConverter extends Converter {
                             .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                             .findAny().orElseThrow();
                     assignment.getInputPins().add(inPin);
-                } else {
-                	System.out.println("Theres the culprit");
-                }
+                } 
                 assignments.add(assignment);
             }
         }
