@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.ArrayList;
 
+import org.apache.log4j.Level;
 import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
 import org.dataflowanalysis.analysis.core.AbstractTransposeFlowGraph;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
@@ -78,6 +79,7 @@ public class PCMConverter extends Converter {
      */
     public DataFlowDiagramAndDictionary pcmToDFD(String modelLocation, String usageModelPath, String allocationPath, String nodeCharPath,
             Class<? extends Plugin> activator) {
+    	this.logger.setLevel(Level.TRACE);
         DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
                 .modelProjectName(modelLocation)
                 .usePluginActivator(activator)
@@ -86,6 +88,7 @@ public class PCMConverter extends Converter {
                 .useNodeCharacteristicsModel(nodeCharPath)
                 .build();
 
+    	analysis.setLoggerLevel(Level.TRACE);
         analysis.initializeAnalysis();
         var flowGraph = analysis.findFlowGraphs();
         flowGraph.evaluate();
@@ -102,13 +105,15 @@ public class PCMConverter extends Converter {
      * @return DataFlowDiagramAndDictionary object representing the converted Palladio model.
      */
     public DataFlowDiagramAndDictionary pcmToDFD(String modelLocation, String usageModelPath, String allocationPath, String nodeCharPath) {
-        DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
+    	this.logger.setLevel(Level.TRACE);
+    	DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
                 .modelProjectName(modelLocation)
                 .useUsageModel(usageModelPath)
                 .useAllocationModel(allocationPath)
                 .useNodeCharacteristicsModel(nodeCharPath)
                 .build();
 
+    	analysis.setLoggerLevel(Level.TRACE);
         analysis.initializeAnalysis();
         var flowGraph = analysis.findFlowGraphs();
         flowGraph.evaluate();
@@ -429,7 +434,9 @@ public class PCMConverter extends Converter {
     }
     
     public void convertBehavior(AbstractPCMVertex<?> pcmVertex, Node node, DataDictionary dataDictionary) {
-        List<ConfidentialityVariableCharacterisation> variableCharacterisations = new ArrayList<>();
+    	this.logger.setLevel(Level.TRACE);
+        logger.trace("Converting pcm vertex " + pcmVertex);
+    	List<ConfidentialityVariableCharacterisation> variableCharacterisations = new ArrayList<>();
         if (pcmVertex.getReferencedElement() instanceof SetVariableAction setVariableAction) {
             variableCharacterisations.addAll(setVariableAction.getLocalVariableUsages_SetVariableAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
         } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
@@ -464,69 +471,55 @@ public class PCMConverter extends Converter {
         			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
         		});
         	}
-        	Set<Pin> occupied = new HashSet<>();
-        	Set<DataCharacteristic> returns = new HashSet<>();
-        	for(var dataCharacteristics : pcmVertex.getAllIncomingDataCharacteristics()) {
-        		if (dataCharacteristics.getVariableName().equals("RETURN")) {
-        			returns.add(dataCharacteristics);
-        			continue;
-        		}
-        		
-            	AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+        	List<DataCharacteristic> dataCharacteristicsForwarded = pcmVertex.getAllIncomingDataCharacteristics().stream()
+        			.filter(it -> pcmVertex.getAllOutgoingDataCharacteristics().stream().anyMatch(ot -> it.getVariableName().equals(ot.getVariableName())))
+        			.toList();
+        	for(var dataCharacteristics : dataCharacteristicsForwarded) {
+        		logger.trace("Forwarding data characteristic " + dataCharacteristics.getVariableName());
+        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
             	Pin inPin = node.getBehaviour().getInPin().stream()
                         .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
-                        .findAny().orElseThrow();
-            	try {
+                        .findAny().orElseThrow(() -> {
+                        	logger.error("Cannot find required in-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
+                        	return new NoSuchElementException();
+                        });
         		Pin outPin = node.getBehaviour().getOutPin().stream()
                     .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
                     .findAny()
-                    .orElse(null);
-        		if (outPin == null) {
-        			outPin = node.getBehaviour().getOutPin().stream()
-                            .filter(it -> it.getEntityName().equals(""))
-                            .findAny()
-                            .orElseThrow();
-        		}
+                    .orElseThrow(() -> {
+                    	logger.error("Cannot find required out-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
+                    	return new NoSuchElementException();
+                    });
         		assignment.getInputPins().add(inPin);
             	assignment.setOutputPin(outPin);
-            	occupied.add(outPin);
-                assignments.add(assignment);
-            	} catch (Exception e) {
-            		var testMapEntry = testMap.get(pcmVertex);
-            		System.out.println("Test");
-            	}
-            	             	
+                assignments.add(assignment);          	
         	}
-        	
-        	returns.forEach(dataCharacteristic -> {
-        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();    
-        		Pin inPin = node.getBehaviour().getInPin().stream()
-                        .filter(it -> it.getEntityName().equals(dataCharacteristic.getVariableName()))
-                        .findAny().orElseThrow();
-        		Pin outPin;
-        		try {
-        			outPin = node.getBehaviour().getOutPin().stream()
-        				.filter(it -> !occupied.contains(it))
-                        .filter(it -> it.getEntityName().equals("RETURN"))
+        	if (dataCharacteristicsForwarded.isEmpty() 
+        			&& pcmVertex.getAllIncomingDataCharacteristics().isEmpty()
+        			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()) {
+        		logger.trace("Vertex has no propagated characteristics, forwarding empty");
+        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+            	Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(""))
                         .findAny()
-                        .orElseThrow();
-            		occupied.add(outPin);
-        		} catch (NoSuchElementException e) { 
-        			try { //TODO: Talk with Felix about
-        			outPin = node.getBehaviour().getOutPin().stream()
-            				.filter(it -> !occupied.contains(it))                            
-                            .findAny()
-                            .orElseThrow();
-        			} catch (NoSuchElementException e2) {
-        				return;
-        			}
-            	}            	
+                        .orElseThrow(() -> {
+                        	logger.error("Cannot find required in-pin with empty name at vertex with name " + pcmVertex);
+                        	return new NoSuchElementException();
+                        });
+        		Pin outPin = node.getBehaviour().getOutPin().stream()
+                    .filter(it -> it.getEntityName().equals(""))
+                    .findAny()
+                    .orElseThrow(() -> {
+                    	logger.error("Cannot find required out-pin with empty name at vertex with name " + pcmVertex);
+                    	return new NoSuchElementException();
+                    });
         		assignment.getInputPins().add(inPin);
             	assignment.setOutputPin(outPin);
-            	assignments.add(assignment);
-        	});
+                assignments.add(assignment);       
+        	}
         }
         for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
+        	logger.trace("Processing assignment");
             var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
 
             EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
@@ -538,6 +531,7 @@ public class PCMConverter extends Converter {
             Term rightHandSide = variableCharacterisation.getRhs();
 
             if (characteristicType == null && characteristicValue == null) {
+            	logger.trace("Processing full forwarding assignment");
             	ForwardingAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
                 Pin outPin = node.getBehaviour().getOutPin().stream()
                         .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
@@ -555,6 +549,7 @@ public class PCMConverter extends Converter {
                 
                 assignments.add(assignment);
             } else if (characteristicValue == null) {
+            	logger.trace("Processing half forwarding assignment");
             	List<DataCharacteristic> forwardedValues = pcmVertex.getAllIncomingDataCharacteristics().stream()
             			.filter(it -> it.getVariableName().equals(reference.getReferenceName()))
             			.filter(it -> it.getAllCharacteristics().stream().anyMatch(dc -> dc.getTypeName().equals(characteristicType.getName())))
@@ -588,6 +583,7 @@ public class PCMConverter extends Converter {
             		}
             	}
             } else {
+            	logger.trace("Processing assignment");
                 Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
             	LabelType labelType = getOrCreateLabelType(characteristicType.getName());
 
@@ -611,6 +607,8 @@ public class PCMConverter extends Converter {
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
+        logger.trace("Processing of vertex finished");
+        logger.trace("--------------------------");
     }
 
     public org.dataflowanalysis.dfd.datadictionary.Term parseTerm(Term rightHandSide, DataDictionary dataDictionary) {

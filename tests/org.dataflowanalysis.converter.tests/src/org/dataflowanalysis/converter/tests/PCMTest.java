@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.stream.Collectors;
 
+import org.apache.log4j.Level;
 import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
 import org.dataflowanalysis.converter.DataFlowDiagramConverter;
 import org.dataflowanalysis.converter.PCMConverter;
@@ -64,6 +65,8 @@ public class PCMTest extends ConverterTest{
                 .useAllocationModel(allocationPath)
                 .useNodeCharacteristicsModel(nodeCharPath)
                 .build();
+        
+        analysis.setLoggerLevel(Level.ALL);
 
         analysis.initializeAnalysis();
         var flowGraph = analysis.findFlowGraphs();
