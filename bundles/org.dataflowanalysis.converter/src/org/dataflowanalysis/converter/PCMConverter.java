@@ -479,8 +479,7 @@ public class PCMConverter extends Converter {
         	if (dataCharacteristicsForwarded.isEmpty() 
         			&& pcmVertex.getAllIncomingDataCharacteristics().isEmpty()
         			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()
-        			&& !(pcmVertex instanceof UserPCMVertex<?>)
-        			&& !(((AbstractUserAction) pcmVertex.getReferencedElement())
+        			&& !(pcmVertex instanceof UserPCMVertex<?> && ((AbstractUserAction) pcmVertex.getReferencedElement())
                     .getScenarioBehaviour_AbstractUserAction()
                     .getUsageScenario_SenarioBehaviour() != null)) {
         		logger.trace("Vertex has no propagated characteristics, forwarding empty");
