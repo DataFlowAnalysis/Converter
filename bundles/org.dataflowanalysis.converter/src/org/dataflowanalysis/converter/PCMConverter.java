@@ -66,7 +66,6 @@ public class PCMConverter extends Converter {
     private DataDictionary dataDictionary;
     private DataFlowDiagram dataFlowDiagram;
     private Set<String> takenIds = new HashSet<>();
-    private Map<AbstractPCMVertex<?>, List<AbstractPCMVertex<?>>> testMap = new HashMap<>();
 
     /**
      * Converts a PCM model into a DataFlowDiagramAndDictionary object.
@@ -183,49 +182,31 @@ public class PCMConverter extends Converter {
         dataDictionary = datadictionaryFactory.eINSTANCE.createDataDictionary();
         dataFlowDiagram = dataflowdiagramFactory.eINSTANCE.createDataFlowDiagram();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	var sink = transposeFlowGraph.getSink();
-	    	 if (sink instanceof AbstractPCMVertex<?> abstractPCMVertex) {
-	         	processSink((AbstractPCMVertex<?>)sink);
-	         }
+        	transposeFlowGraph.getVertices().forEach(v -> processVertex((AbstractPCMVertex<? extends Entity>)v));
         }
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	var sink = transposeFlowGraph.getSink();
-	    	 if (sink instanceof AbstractPCMVertex<?> abstractPCMVertex) {
-	         	processSink2((AbstractPCMVertex<?>)sink);
-	         }
+        	transposeFlowGraph.getVertices().forEach(v -> createFlowsForVertex((AbstractPCMVertex<? extends Entity>)v));
+        } 
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
+        	transposeFlowGraph.getVertices().forEach(v -> createBehaviour((AbstractPCMVertex<? extends Entity>)v));
         }
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
-
-    private void processSink(AbstractPCMVertex<? extends Entity> pcmVertex) {
-    	Node node;
-    	if (dfdNodeMap.get(pcmVertex) == null) {
-    		node = getDFDNode(pcmVertex);
-    	} else return;
-    	
-    	createPinsFromVertex(node, pcmVertex);
-    		
-    	
-
-    	pcmVertex.getPreviousElements().forEach(this::processSink);
-    	
-    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
-    	
-    	pcmVertex.getPreviousElements().forEach(previousElement -> {
-    		if(testMap.get(previousElement) == null) {
-    			testMap.put(previousElement, new ArrayList<>());
-    		}
-    		testMap.get(previousElement).add(pcmVertex);
-    	});
-    	  	
-    	
-    	//convertBehavior(pcmVertex, node, dataDictionary);   
+    
+    private void processVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var node = getDFDNode(pcmVertex);
+    	createPinsFromVertex(node, pcmVertex);    	
     }
     
-    private void processSink2(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    private void createFlowsForVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
+    }
+
+    
+    
+    private void createBehaviour(AbstractPCMVertex<? extends Entity> pcmVertex) {
     	var node = getDFDNode(pcmVertex);
     	convertBehavior(pcmVertex, node, dataDictionary);
-    	pcmVertex.getPreviousElements().forEach(this::processSink2);
     }
     
     private void createPinsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
