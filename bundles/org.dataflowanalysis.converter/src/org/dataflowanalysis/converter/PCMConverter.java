@@ -41,6 +41,7 @@ import org.eclipse.core.runtime.Plugin;
 import org.palladiosimulator.pcm.core.entity.Entity;
 import org.palladiosimulator.pcm.parameter.VariableUsage;
 import org.palladiosimulator.pcm.seff.*;
+import org.palladiosimulator.pcm.usagemodel.AbstractUserAction;
 import org.palladiosimulator.pcm.usagemodel.EntryLevelSystemCall;
 import org.palladiosimulator.pcm.usagemodel.Start;
 import org.palladiosimulator.pcm.usagemodel.Stop;
@@ -477,7 +478,11 @@ public class PCMConverter extends Converter {
         	}
         	if (dataCharacteristicsForwarded.isEmpty() 
         			&& pcmVertex.getAllIncomingDataCharacteristics().isEmpty()
-        			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()) {
+        			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()
+        			&& !(pcmVertex instanceof UserPCMVertex<?>)
+        			&& !(((AbstractUserAction) pcmVertex.getReferencedElement())
+                    .getScenarioBehaviour_AbstractUserAction()
+                    .getUsageScenario_SenarioBehaviour() != null)) {
         		logger.trace("Vertex has no propagated characteristics, forwarding empty");
         		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
             	Pin inPin = node.getBehaviour().getInPin().stream()
