@@ -179,7 +179,8 @@ public class PCMConverter extends Converter {
                 .getEntityName();
     }
 
-    private DataFlowDiagramAndDictionary processPalladio(FlowGraphCollection flowGraphCollection) {
+    @SuppressWarnings("unchecked")
+	private DataFlowDiagramAndDictionary processPalladio(FlowGraphCollection flowGraphCollection) {
         dataDictionary = datadictionaryFactory.eINSTANCE.createDataDictionary();
         dataFlowDiagram = dataflowdiagramFactory.eINSTANCE.createDataFlowDiagram();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
@@ -194,22 +195,38 @@ public class PCMConverter extends Converter {
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
     
+    /**
+     * Creates DFD Node from PCM Vertex and annotates the pins according to incoming and outgoing data characteristics
+     * @param pcmVertex PCm Vertex to be converted
+     */
     private void processVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
     	var node = getDFDNode(pcmVertex);
     	createPinsFromVertex(node, pcmVertex);    	
     }
     
+    /**
+     * Creates the flows to each DFD Node according to previous elements
+     * @param pcmVertex PCMVertex whichs corresponding note is the flow target
+     */
     private void createFlowsForVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
-    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlow(previousElement, pcmVertex));
+    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlows(previousElement, pcmVertex));
     }
-
     
     
+    /**
+     * Creates the behaviour for the DFD Node from its corresponding PCM logic
+     * @param pcmVertex PCMVertex whichs corresponding note is to be annotated
+     */
     private void createBehaviour(AbstractPCMVertex<? extends Entity> pcmVertex) {
     	var node = getDFDNode(pcmVertex);
     	convertBehavior(pcmVertex, node, dataDictionary);
     }
     
+    /**
+     * Creates and adds the pins to the node supplied according to the incoming and outgoing data characteristics of the supplied vertex
+     * @param node to be annotated
+     * @param pcmVertex holding the data characteristics
+     */
     private void createPinsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
     	var behaviour = node.getBehaviour();
     	pcmVertex.getAllIncomingDataCharacteristics().forEach(idc -> {
@@ -224,7 +241,12 @@ public class PCMConverter extends Converter {
     	});
     }
     
-    private void createFlow(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
+    /**
+     * Creates flows between the nodes corresponding to the source and destination vertex
+     * @param sourceVertex
+     * @param destinationVertex
+     */
+    private void createFlows(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
     	var intersectingDataCharacteristics = sourceVertex.getAllOutgoingDataCharacteristics().stream()
     			.map(odc -> odc.getVariableName())
     			.filter(odc -> {
@@ -235,14 +257,14 @@ public class PCMConverter extends Converter {
     	} else {
     		createFlowForListOfCharacteristics(sourceVertex, destinationVertex, intersectingDataCharacteristics);
     	}   
-    	
-    	var node = dfdNodeMap.get(sourceVertex);
-
-    	if (node.getBehaviour().getOutPin().isEmpty()) {
-    		System.out.println("Test");
-    	}
     }
     
+    /**
+     * Creates flows in case of source and destination vertex holding similar data characteristics
+     * @param sourceVertex
+     * @param destinationVertex
+     * @param intersectingDataCharacteristics
+     */
     private void createFlowForListOfCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex, List<String> intersectingDataCharacteristics) {
     	var sourceNode = dfdNodeMap.get(sourceVertex);
     	var destinationNode = dfdNodeMap.get(destinationVertex);
@@ -261,6 +283,11 @@ public class PCMConverter extends Converter {
     	}     	
     }
     
+    /**
+     * Creates flow in case of no similar characteristics between source and destination node
+     * @param sourceVertex
+     * @param destinationVertex
+     */
     private void createEmptyFlowForNoDataCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
     	var sourceNode = dfdNodeMap.get(sourceVertex);
     	var destinationNode = dfdNodeMap.get(destinationVertex);
@@ -283,25 +310,28 @@ public class PCMConverter extends Converter {
     	destinationNode.getBehaviour().getInPin().add(inPin);
     }
 
-   
+   /**
+    * Returns the corresponding DFD node or creates and annotates it with properties 
+    * @param pcmVertex to be converted
+    * @return The corresponding or created DFD Node
+    */
     private Node getDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
         Node dfdNode = dfdNodeMap.get(pcmVertex);
 
         if (dfdNode == null) {
-            dfdNode = createDFDNode(pcmVertex);
-        }
-
-        addNodeCharacteristicsToNode(dfdNode, pcmVertex.getAllVertexCharacteristics());
+            dfdNode = createCorrespondingDFDNode(pcmVertex);
+            addNodeCharacteristicsToNode(dfdNode, pcmVertex.getAllVertexCharacteristics());
+            dfdNodeMap.put(pcmVertex, dfdNode);
+        }        
 
         return dfdNode;
     }
 
-    private Node createDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
-        Node dfdNode = createCorrespondingDFDNode(pcmVertex);
-        dfdNodeMap.put(pcmVertex, dfdNode);
-        return dfdNode;
-    }
-
+    /**
+     * Creates DFD Node from corresponding PCM Vertex
+     * @param pcmVertex to be converted
+     * @return new DFD Node
+     */
     private Node createCorrespondingDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
         Node node;
 
@@ -332,6 +362,11 @@ public class PCMConverter extends Converter {
         return node;
     }
 
+    /**
+     * Converts the CharacteristicsValues supplied into labels and adds them as DFD Node properties
+     * @param node the node to add characteristics to
+     * @param charValues the list of characteristic values
+     */
     private void addNodeCharacteristicsToNode(Node node, List<CharacteristicValue> charValues) {
         for (CharacteristicValue charValue : charValues) {
             Label label = getOrCreateDFDLabel(charValue);
@@ -343,6 +378,11 @@ public class PCMConverter extends Converter {
         }
     }
     
+    /**
+     * Get or create a LabelType with the supplied String name
+     * @param name the name of the LabelType
+     * @return the LabelType
+     */
     private LabelType getOrCreateLabelType(String name) {
     	 LabelType type = dataDictionary.getLabelTypes()
                  .stream()
@@ -354,6 +394,11 @@ public class PCMConverter extends Converter {
     	 return type;
     }
 
+    /**
+     * Get or create a Label from the supplied CharacteristicValue
+     * @param charValue the CharacteristicValue
+     * @return the Label
+     */
     private Label getOrCreateDFDLabel(CharacteristicValue charValue) {
         LabelType type = dataDictionary.getLabelTypes()
                 .stream()
@@ -372,6 +417,12 @@ public class PCMConverter extends Converter {
         return label;
     }
     
+    /**
+     * Get or create a Label with the supplied String name and LabelType
+     * @param labelName the name of the Label
+     * @param type the LabelType
+     * @return the Label
+     */
     private Label getOrCreateDFDLabel(String labelName, LabelType type) {
         Label label = type.getLabel()
                 .stream()
@@ -383,6 +434,12 @@ public class PCMConverter extends Converter {
         return label;
     }
 
+    /**
+     * Creates a Label from the supplied CharacteristicValue and adds it to the LabelType
+     * @param charValue the CharacteristicValue
+     * @param type the LabelType
+     * @return the created Label
+     */
     private Label createLabel(CharacteristicValue charValue, LabelType type) {
         Label label = datadictionaryFactory.eINSTANCE.createLabel();
         label.setEntityName(charValue.getValueName());
@@ -391,6 +448,12 @@ public class PCMConverter extends Converter {
         return label;
     }
     
+    /**
+     * Creates a Label with the supplied name and adds it to the LabelType
+     * @param name the name of the Label
+     * @param type the LabelType
+     * @return the created Label
+     */
     private Label createLabel(String name, LabelType type) {
         Label label = datadictionaryFactory.eINSTANCE.createLabel();
         label.setEntityName(name);
@@ -399,6 +462,11 @@ public class PCMConverter extends Converter {
         return label;
     }
 
+    /**
+     * Creates a LabelType from the supplied CharacteristicValue
+     * @param charValue the CharacteristicValue
+     * @return the created LabelType
+     */
     private LabelType createLabelType(CharacteristicValue charValue) {
         LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
         type.setEntityName(charValue.getTypeName());
@@ -407,6 +475,11 @@ public class PCMConverter extends Converter {
         return type;
     }
     
+    /**
+     * Creates a LabelType with the supplied name
+     * @param name the name of the LabelType
+     * @return the created LabelType
+     */
     private LabelType createLabelType(String name) {
         LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
         type.setEntityName(name);
@@ -415,6 +488,12 @@ public class PCMConverter extends Converter {
         return type;
     }
     
+    /**
+     * Converts behavior from PCM Vertex to Node and adds it to the Data Dictionary
+     * @param pcmVertex the PCM Vertex
+     * @param node the DFD Node
+     * @param dataDictionary the Data Dictionary
+     */
     public void convertBehavior(AbstractPCMVertex<?> pcmVertex, Node node, DataDictionary dataDictionary) {
     	this.logger.setLevel(Level.TRACE);
         logger.trace("Converting pcm vertex " + pcmVertex);
@@ -596,6 +675,12 @@ public class PCMConverter extends Converter {
         logger.trace("--------------------------");
     }
 
+    /**
+     * Parses a Term object into a corresponding Data Dictionary Term
+     * @param rightHandSide the Term object to parse
+     * @param dataDictionary the Data Dictionary
+     * @return the parsed Term
+     */
     public org.dataflowanalysis.dfd.datadictionary.Term parseTerm(Term rightHandSide, DataDictionary dataDictionary) {
         if(rightHandSide instanceof True) {
             return datadictionaryFactory.eINSTANCE.createTRUE();
