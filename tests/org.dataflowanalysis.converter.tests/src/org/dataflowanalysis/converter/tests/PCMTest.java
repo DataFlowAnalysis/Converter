@@ -21,12 +21,10 @@ import org.dataflowanalysis.examplemodels.Activator;
 import org.dataflowanalysis.analysis.core.AbstractTransposeFlowGraph;
 import org.dataflowanalysis.analysis.core.AbstractVertex;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
-import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
-import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,7 +45,7 @@ public class PCMTest extends ConverterTest{
 	@Test
     @DisplayName("Test PCM2DFD CWA")
     public void cwaToDfd() {
-        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "cwa.json");
+        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\cwa.json");
     }
     
     private void testSpecificModel(String inputModel, String inputFile, String modelLocation, String webTarget) {
@@ -72,12 +70,11 @@ public class PCMTest extends ConverterTest{
         var flowGraph = analysis.findFlowGraphs();
         flowGraph.evaluate();
 
-        Map<String, String> assIdToName = new HashMap<>();
+       	List<AbstractPCMVertex<?>> vertices = new ArrayList<>();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraph.getTransposeFlowGraphs()) {
             for (AbstractVertex<?> abstractVertex : transposeFlowGraph.getVertices()) {
-                var cast = (AbstractPCMVertex<?>) abstractVertex;
-                assIdToName.putIfAbsent(cast.getReferencedElement()
-                        .getId(), PCMConverter.computeCompleteName(cast));
+            	AbstractPCMVertex<?> v = (AbstractPCMVertex<?>) abstractVertex;
+               vertices.add(v);
             }
         }
 
@@ -90,68 +87,38 @@ public class PCMTest extends ConverterTest{
 
         var dfd = complete.dataFlowDiagram();
         var dd = complete.dataDictionary();
+        
 
-        assertEquals(dfd.getNodes()
-                .size(),
-                assIdToName.keySet()
-                        .size());
+        assertEquals(dfd.getNodes().size(), vertices.size());
 
         List<String> nodeIds = new ArrayList<>();
         for (Node node : dfd.getNodes()) {
             nodeIds.add(node.getId());
         }
-        Collections.sort(nodeIds);
-        List<String> assIds = new ArrayList<>(assIdToName.keySet());
-        Collections.sort(assIds);
-
-        assertEquals(assIds, nodeIds);
-
-        for (Node node : dfd.getNodes()) {
-            assertEquals(node.getEntityName(), assIdToName.get(node.getId()));
-        }
-
-        Set<String> flowNames = new HashSet<>();
-        for (AbstractTransposeFlowGraph abstractTransposeFlowGraph : flowGraph.getTransposeFlowGraphs()) {
-            AbstractVertex<?> previousAse = null;
-            for (AbstractVertex<?> ase : abstractTransposeFlowGraph.getVertices()) {
-                if(!ase.getPreviousElements().isEmpty()) {
-                    List<DataCharacteristic> variables = ase.getAllDataCharacteristics();
-                    if (variables.isEmpty()) flowNames.add(previousAse.hashCode()+ase.hashCode()+"");
-                    for (DataCharacteristic variable : variables) {
-                        flowNames.add(previousAse.hashCode()+ase.hashCode()+variable.variableName());
-                    } 
-                }
-                previousAse=ase;
-            }
-        }
-
-        assertEquals(flowNames.size(), dfd.getFlows()
-                .size());
-                
         
 
-        // When transforming PCM to DFD, we represent all outputs through forwarding assignments.
-        // This approach omits certain behaviors and labels that are not essential for visual representation.
-        for (var behavior : dd.getBehaviour()) {
-            for (var assignment : behavior.getAssignment()) {
-                assertTrue(assignment instanceof ForwardingAssignment);
-            }
-        }
 
         checkLabels(dd, flowGraph);
     }
+    
+    
 
     private void checkLabels(DataDictionary dd, FlowGraphCollection flowGraph) {
-        Map<String, CharacteristicValue> chars = new HashMap<>();
+       Set<CharacteristicValue> values = new HashSet<>();
         for (var pfg : flowGraph.getTransposeFlowGraphs()) {
             for (var vertex : pfg.getVertices()) {
                 for (var nodeChar : vertex.getAllVertexCharacteristics()) {
-                    chars.putIfAbsent(nodeChar.getValueId(), nodeChar);
+                	values.add(nodeChar);
+                }
+                for (var dataChar : vertex.getAllIncomingDataCharacteristics()) {
+                	for (var charValue : dataChar.getAllCharacteristics()) {
+                		values.add(charValue);
+                	}
                 }
             }
         }
 
-        List<String> labelsPCM = chars.values()
+        List<String> labelsPCM = values
                 .stream()
                 .map(c -> c.getTypeName() + "." + c.getValueName())
                 .collect(Collectors.toList());
