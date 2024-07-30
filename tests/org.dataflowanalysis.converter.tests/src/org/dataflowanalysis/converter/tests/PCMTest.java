@@ -45,7 +45,7 @@ public class PCMTest extends ConverterTest{
 	@Test
     @DisplayName("Test PCM2DFD CWA")
     public void cwaToDfd() {
-        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "C:\\Users\\Huell\\Desktop\\Newfolder\\cwa.json");
+        testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "cwa.json");
     }
     
     private void testSpecificModel(String inputModel, String inputFile, String modelLocation, String webTarget) {
