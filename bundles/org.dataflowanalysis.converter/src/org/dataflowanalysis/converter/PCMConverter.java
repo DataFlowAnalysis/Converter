@@ -3,14 +3,18 @@ package org.dataflowanalysis.converter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.ArrayList;
 
+import org.apache.log4j.Level;
 import org.dataflowanalysis.analysis.DataFlowConfidentialityAnalysis;
 import org.dataflowanalysis.analysis.core.AbstractTransposeFlowGraph;
-import org.dataflowanalysis.analysis.core.AbstractVertex;
 import org.dataflowanalysis.analysis.core.CharacteristicValue;
-import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.core.FlowGraphCollection;
+import org.dataflowanalysis.analysis.core.DataCharacteristic;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.seff.CallingSEFFPCMVertex;
@@ -18,6 +22,8 @@ import org.dataflowanalysis.analysis.pcm.core.seff.SEFFPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.CallingUserPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.UserPCMVertex;
 import org.dataflowanalysis.analysis.pcm.utils.PCMQueryUtils;
+import org.dataflowanalysis.dfd.datadictionary.AbstractAssignment;
+import org.dataflowanalysis.dfd.datadictionary.Assignment;
 import org.dataflowanalysis.dfd.datadictionary.Behaviour;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
 import org.dataflowanalysis.dfd.datadictionary.Label;
@@ -25,18 +31,31 @@ import org.dataflowanalysis.dfd.datadictionary.LabelType;
 import org.dataflowanalysis.dfd.datadictionary.Pin;
 import org.dataflowanalysis.dfd.datadictionary.datadictionaryFactory;
 import org.dataflowanalysis.dfd.dataflowdiagram.DataFlowDiagram;
-import org.dataflowanalysis.dfd.dataflowdiagram.Flow;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
 import org.dataflowanalysis.dfd.dataflowdiagram.dataflowdiagramFactory;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.Literal;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.Term;
+import org.dataflowanalysis.pcm.extension.model.confidentiality.ConfidentialityVariableCharacterisation;
+import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.NamedEnumCharacteristicReference;
 import org.eclipse.core.runtime.Plugin;
 import org.palladiosimulator.pcm.core.entity.Entity;
-import org.palladiosimulator.pcm.seff.AbstractBranchTransition;
-import org.palladiosimulator.pcm.seff.BranchAction;
-import org.palladiosimulator.pcm.seff.ResourceDemandingSEFF;
-import org.palladiosimulator.pcm.seff.StartAction;
-import org.palladiosimulator.pcm.seff.StopAction;
+import org.palladiosimulator.pcm.parameter.VariableUsage;
+import org.palladiosimulator.pcm.seff.*;
+import org.palladiosimulator.pcm.usagemodel.AbstractUserAction;
+import org.palladiosimulator.pcm.usagemodel.EntryLevelSystemCall;
 import org.palladiosimulator.pcm.usagemodel.Start;
 import org.palladiosimulator.pcm.usagemodel.Stop;
+
+import de.uka.ipd.sdq.stoex.AbstractNamedReference;
+import org.dataflowanalysis.dfd.datadictionary.*;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.EnumCharacteristicType;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.And;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.False;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.Or;
+import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionaryCharacterized.expressions.True;
+import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.LhsEnumCharacteristicReference;
+import org.palladiosimulator.pcm.seff.ExternalCallAction;
+import org.palladiosimulator.pcm.seff.SetVariableAction;
 
 /**
  * Converts Palladio models to the data flow diagram and dictionary representation. Inherits from {@link Converter} to
@@ -44,9 +63,10 @@ import org.palladiosimulator.pcm.usagemodel.Stop;
  */
 public class PCMConverter extends Converter {
 
-    private final Map<Entity, Node> dfdNodeMap = new HashMap<>();
+    private final Map<AbstractPCMVertex<?>, Node> dfdNodeMap = new HashMap<>();
     private DataDictionary dataDictionary;
     private DataFlowDiagram dataFlowDiagram;
+    private Set<String> takenIds = new HashSet<>();
 
     /**
      * Converts a PCM model into a DataFlowDiagramAndDictionary object.
@@ -59,6 +79,7 @@ public class PCMConverter extends Converter {
      */
     public DataFlowDiagramAndDictionary pcmToDFD(String modelLocation, String usageModelPath, String allocationPath, String nodeCharPath,
             Class<? extends Plugin> activator) {
+    	this.logger.setLevel(Level.TRACE);
         DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
                 .modelProjectName(modelLocation)
                 .usePluginActivator(activator)
@@ -67,6 +88,7 @@ public class PCMConverter extends Converter {
                 .useNodeCharacteristicsModel(nodeCharPath)
                 .build();
 
+    	analysis.setLoggerLevel(Level.TRACE);
         analysis.initializeAnalysis();
         var flowGraph = analysis.findFlowGraphs();
         flowGraph.evaluate();
@@ -83,13 +105,15 @@ public class PCMConverter extends Converter {
      * @return DataFlowDiagramAndDictionary object representing the converted Palladio model.
      */
     public DataFlowDiagramAndDictionary pcmToDFD(String modelLocation, String usageModelPath, String allocationPath, String nodeCharPath) {
-        DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
+    	this.logger.setLevel(Level.TRACE);
+    	DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
                 .modelProjectName(modelLocation)
                 .useUsageModel(usageModelPath)
                 .useAllocationModel(allocationPath)
                 .useNodeCharacteristicsModel(nodeCharPath)
                 .build();
 
+    	analysis.setLoggerLevel(Level.TRACE);
         analysis.initializeAnalysis();
         var flowGraph = analysis.findFlowGraphs();
         flowGraph.evaluate();
@@ -155,139 +179,159 @@ public class PCMConverter extends Converter {
                 .getEntityName();
     }
 
-    private DataFlowDiagramAndDictionary processPalladio(FlowGraphCollection flowGraphCollection) {
+    @SuppressWarnings("unchecked")
+	private DataFlowDiagramAndDictionary processPalladio(FlowGraphCollection flowGraphCollection) {
         dataDictionary = datadictionaryFactory.eINSTANCE.createDataDictionary();
         dataFlowDiagram = dataflowdiagramFactory.eINSTANCE.createDataFlowDiagram();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-            Node previousNode = null;
-            for (AbstractVertex<?> abstractVertex : transposeFlowGraph.getVertices()) {            	
-                if (abstractVertex instanceof AbstractPCMVertex<?> abstractPCMVertex) {
-                    previousNode = processAbstractPCMVertex(abstractPCMVertex, previousNode);
-                }
-            }
+        	transposeFlowGraph.getVertices().forEach(v -> processVertex((AbstractPCMVertex<? extends Entity>)v));
         }
-        createForwardingAssignments();
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
+        	transposeFlowGraph.getVertices().forEach(v -> createFlowsForVertex((AbstractPCMVertex<? extends Entity>)v));
+        } 
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
+        	transposeFlowGraph.getVertices().forEach(v -> createBehaviour((AbstractPCMVertex<? extends Entity>)v));
+        }
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
-
-    private Node processAbstractPCMVertex(AbstractPCMVertex<? extends Entity> pcmVertex, Node previousDFDNode) {
-        Node dfdNode = getDFDNode(pcmVertex);
-
-        createFlowBetweenPreviousAndCurrentNode(previousDFDNode, dfdNode, pcmVertex);
-
-        return dfdNode;
-    }
-
-    private void createFlowBetweenPreviousAndCurrentNode(Node source, Node destination, AbstractPCMVertex<? extends Entity> pcmVertex) {
-        if (source == null || destination == null) {
-            return;
-        }
-        List<DataCharacteristic> dataCharacteristics = pcmVertex.getAllDataCharacteristics();
-        if (dataCharacteristics.size() == 0) findOrCreateFlow(source, destination, "");
-        for (DataCharacteristic dataCharacteristic : dataCharacteristics) {
-            findOrCreateFlow(source, destination, dataCharacteristic.variableName());
-        }   
-    }
-
-    private void findOrCreateFlow(Node source, Node destination, String flowName) {
-        dataFlowDiagram.getFlows()
-                .stream()
-                .filter(f -> f.getSourceNode()
-                        .equals(source))
-                .filter(f -> f.getDestinationNode()
-                        .equals(destination))
-                .filter(f -> f.getEntityName()
-                        .equals(flowName))
-                .findFirst()
-                .orElseGet(() -> createFlow(source, destination, flowName));
-    }
-
-    private Flow createFlow(Node source, Node destination, String flowName) {
-        Flow newFlow = dataflowdiagramFactory.eINSTANCE.createFlow();
-        newFlow.setSourceNode(source);
-        newFlow.setDestinationNode(destination);
-        newFlow.setEntityName(flowName);
-        Pin sourceOutPin = findOutputPin(source, flowName);
-        Pin destInPin = findInputPin(destination, flowName);
-        newFlow.setSourcePin(sourceOutPin);
-        newFlow.setDestinationPin(destInPin);
-
-        this.dataFlowDiagram.getFlows()
-                .add(newFlow);
-        return newFlow;
+    
+    /**
+     * Creates DFD Node from PCM Vertex and annotates the pins according to incoming and outgoing data characteristics
+     * @param pcmVertex PCm Vertex to be converted
+     */
+    private void processVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var node = getDFDNode(pcmVertex);
+    	createPinsFromVertex(node, pcmVertex);    	
     }
     
-    private void createForwardingAssignments() {
-        for (Node node : dataFlowDiagram.getNodes()) {
-            var behaviour = node.getBehaviour();
-            if (!behaviour.getInPin().isEmpty()) {
-                for (Pin pin : behaviour.getOutPin()) {
-                    var assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
-                    assignment.setOutputPin(pin);
-                    assignment.getInputPins()
-                            .addAll(behaviour.getInPin());
-                    behaviour.getAssignment()
-                            .add(assignment);
-                }
-            }
-        }
+    /**
+     * Creates the flows to each DFD Node according to previous elements
+     * @param pcmVertex PCMVertex whichs corresponding note is the flow target
+     */
+    private void createFlowsForVertex(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	pcmVertex.getPreviousElements().forEach(previousElement -> createFlows(previousElement, pcmVertex));
+    }
+    
+    
+    /**
+     * Creates the behaviour for the DFD Node from its corresponding PCM logic
+     * @param pcmVertex PCMVertex whichs corresponding note is to be annotated
+     */
+    private void createBehaviour(AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var node = getDFDNode(pcmVertex);
+    	convertBehavior(pcmVertex, node, dataDictionary);
+    }
+    
+    /**
+     * Creates and adds the pins to the node supplied according to the incoming and outgoing data characteristics of the supplied vertex
+     * @param node to be annotated
+     * @param pcmVertex holding the data characteristics
+     */
+    private void createPinsFromVertex(Node node, AbstractPCMVertex<? extends Entity> pcmVertex) {
+    	var behaviour = node.getBehaviour();
+    	pcmVertex.getAllIncomingDataCharacteristics().forEach(idc -> {
+    		var pin = datadictionaryFactory.eINSTANCE.createPin();
+    		pin.setEntityName(idc.getVariableName());
+    		behaviour.getInPin().add(pin);
+    	});
+    	pcmVertex.getAllOutgoingDataCharacteristics().forEach(odc -> {
+    		var pin = datadictionaryFactory.eINSTANCE.createPin();
+    		pin.setEntityName(odc.getVariableName());
+    		behaviour.getOutPin().add(pin);    		
+    	});
+    }
+    
+    /**
+     * Creates flows between the nodes corresponding to the source and destination vertex
+     * @param sourceVertex
+     * @param destinationVertex
+     */
+    private void createFlows(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
+    	var intersectingDataCharacteristics = sourceVertex.getAllOutgoingDataCharacteristics().stream()
+    			.map(odc -> odc.getVariableName())
+    			.filter(odc -> {
+    				return destinationVertex.getAllIncomingDataCharacteristics().stream().map(idc -> idc.getVariableName()).toList().contains(odc);
+    			}).toList() ;  
+    	if (intersectingDataCharacteristics.size() == 0) {
+    		createEmptyFlowForNoDataCharacteristics(sourceVertex, destinationVertex);
+    	} else {
+    		createFlowForListOfCharacteristics(sourceVertex, destinationVertex, intersectingDataCharacteristics);
+    	}   
+    }
+    
+    /**
+     * Creates flows in case of source and destination vertex holding similar data characteristics
+     * @param sourceVertex
+     * @param destinationVertex
+     * @param intersectingDataCharacteristics
+     */
+    private void createFlowForListOfCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex, List<String> intersectingDataCharacteristics) {
+    	var sourceNode = dfdNodeMap.get(sourceVertex);
+    	var destinationNode = dfdNodeMap.get(destinationVertex);
+    	for (var dataCharacteristic : intersectingDataCharacteristics) {
+    		var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
+    		var inPin = destinationNode.getBehaviour().getInPin().stream().filter(pin -> pin.getEntityName().equals(dataCharacteristic)).toList().get(0);    		
+    		var outPin = sourceNode.getBehaviour().getOutPin().stream().filter(pin -> pin.getEntityName().equals(dataCharacteristic)).toList().get(0);
+    		
+    		flow.setEntityName(dataCharacteristic);
+    		flow.setDestinationNode(destinationNode);
+    		flow.setSourceNode(sourceNode);
+    		flow.setDestinationPin(inPin);
+    		flow.setSourcePin(outPin);
+    		
+    		dataFlowDiagram.getFlows().add(flow);
+    	}     	
+    }
+    
+    /**
+     * Creates flow in case of no similar characteristics between source and destination node
+     * @param sourceVertex
+     * @param destinationVertex
+     */
+    private void createEmptyFlowForNoDataCharacteristics(AbstractPCMVertex<? extends Entity> sourceVertex, AbstractPCMVertex<? extends Entity> destinationVertex) {
+    	var sourceNode = dfdNodeMap.get(sourceVertex);
+    	var destinationNode = dfdNodeMap.get(destinationVertex);
+    	
+    	var flow = dataflowdiagramFactory.eINSTANCE.createFlow();
+    	var inPin = datadictionaryFactory.eINSTANCE.createPin();
+    	var outPin = datadictionaryFactory.eINSTANCE.createPin();
+    	
+    	inPin.setEntityName("");
+    	outPin.setEntityName("");
+    	
+    	flow.setDestinationNode(destinationNode);
+    	flow.setSourceNode(sourceNode);
+    	flow.setDestinationPin(inPin);
+    	flow.setSourcePin(outPin);
+    	flow.setEntityName("");
+    	dataFlowDiagram.getFlows().add(flow);
+    	
+    	sourceNode.getBehaviour().getOutPin().add(outPin);
+    	destinationNode.getBehaviour().getInPin().add(inPin);
     }
 
-    // A pin is equivalent if the same parameters are passed
-    private Pin findOutputPin(Node source, String parameters) {
-        return source.getBehaviour()
-                .getOutPin()
-                .stream()
-                .filter(p -> p.getEntityName()
-                        .equals(parameters))
-                .findAny()
-                .orElseGet(() -> createPin(source, parameters, false));
-    }
-
-    // A pin is equivalent if the same parameters are passed
-    private Pin findInputPin(Node destination, String parameters) {
-        return destination.getBehaviour()
-                .getInPin()
-                .stream()
-                .filter(p -> p.getEntityName()
-                        .equals(parameters))
-                .findAny()
-                .orElseGet(() -> createPin(destination, parameters, true));
-    }
-
-    private Pin createPin(Node node, String parameters, boolean isInPin) {
-        Pin pin = datadictionaryFactory.eINSTANCE.createPin();
-        pin.setEntityName(parameters);
-        if (isInPin) {
-            node.getBehaviour()
-                    .getInPin()
-                    .add(pin);
-        } else {
-            node.getBehaviour()
-                    .getOutPin()
-                    .add(pin);
-        }
-        return pin;
-    }
-
+   /**
+    * Returns the corresponding DFD node or creates and annotates it with properties 
+    * @param pcmVertex to be converted
+    * @return The corresponding or created DFD Node
+    */
     private Node getDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
-        Node dfdNode = dfdNodeMap.get(pcmVertex.getReferencedElement());
+        Node dfdNode = dfdNodeMap.get(pcmVertex);
 
         if (dfdNode == null) {
-            dfdNode = createDFDNode(pcmVertex);
-        }
-
-        addNodeCharacteristicsToNode(dfdNode, pcmVertex.getAllVertexCharacteristics());
+            dfdNode = createCorrespondingDFDNode(pcmVertex);
+            addNodeCharacteristicsToNode(dfdNode, pcmVertex.getAllVertexCharacteristics());
+            dfdNodeMap.put(pcmVertex, dfdNode);
+        }        
 
         return dfdNode;
     }
 
-    private Node createDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
-        Node dfdNode = createCorrespondingDFDNode(pcmVertex);
-        dfdNodeMap.put(pcmVertex.getReferencedElement(), dfdNode);
-        return dfdNode;
-    }
-
+    /**
+     * Creates DFD Node from corresponding PCM Vertex
+     * @param pcmVertex to be converted
+     * @return new DFD Node
+     */
     private Node createCorrespondingDFDNode(AbstractPCMVertex<? extends Entity> pcmVertex) {
         Node node;
 
@@ -303,9 +347,13 @@ public class PCMConverter extends Converter {
         Behaviour behaviour = datadictionaryFactory.eINSTANCE.createBehaviour();
 
         node.setEntityName(computeCompleteName(pcmVertex));
-        node.setId(pcmVertex.getReferencedElement()
-                .getId());
-
+        
+        var id = pcmVertex.getReferencedElement()
+                .getId();
+        if (takenIds.contains(id)) id += "_1";
+        
+        node.setId(id);
+        takenIds.add(id);
         node.setBehaviour(behaviour);
         dataDictionary.getBehaviour()
                 .add(behaviour);
@@ -314,6 +362,11 @@ public class PCMConverter extends Converter {
         return node;
     }
 
+    /**
+     * Converts the CharacteristicsValues supplied into labels and adds them as DFD Node properties
+     * @param node the node to add characteristics to
+     * @param charValues the list of characteristic values
+     */
     private void addNodeCharacteristicsToNode(Node node, List<CharacteristicValue> charValues) {
         for (CharacteristicValue charValue : charValues) {
             Label label = getOrCreateDFDLabel(charValue);
@@ -324,7 +377,28 @@ public class PCMConverter extends Converter {
             }
         }
     }
+    
+    /**
+     * Get or create a LabelType with the supplied String name
+     * @param name the name of the LabelType
+     * @return the LabelType
+     */
+    private LabelType getOrCreateLabelType(String name) {
+    	 LabelType type = dataDictionary.getLabelTypes()
+                 .stream()
+                 .filter(f -> f.getEntityName()
+                         .equals(name))
+                 .findFirst()
+                 .orElseGet(() -> createLabelType(name));
+    	 
+    	 return type;
+    }
 
+    /**
+     * Get or create a Label from the supplied CharacteristicValue
+     * @param charValue the CharacteristicValue
+     * @return the Label
+     */
     private Label getOrCreateDFDLabel(CharacteristicValue charValue) {
         LabelType type = dataDictionary.getLabelTypes()
                 .stream()
@@ -342,7 +416,30 @@ public class PCMConverter extends Converter {
 
         return label;
     }
+    
+    /**
+     * Get or create a Label with the supplied String name and LabelType
+     * @param labelName the name of the Label
+     * @param type the LabelType
+     * @return the Label
+     */
+    private Label getOrCreateDFDLabel(String labelName, LabelType type) {
+        Label label = type.getLabel()
+                .stream()
+                .filter(f -> f.getEntityName()
+                        .equals(labelName))
+                .findFirst()
+                .orElseGet(() -> createLabel(labelName, type));
 
+        return label;
+    }
+
+    /**
+     * Creates a Label from the supplied CharacteristicValue and adds it to the LabelType
+     * @param charValue the CharacteristicValue
+     * @param type the LabelType
+     * @return the created Label
+     */
     private Label createLabel(CharacteristicValue charValue, LabelType type) {
         Label label = datadictionaryFactory.eINSTANCE.createLabel();
         label.setEntityName(charValue.getValueName());
@@ -350,7 +447,26 @@ public class PCMConverter extends Converter {
                 .add(label);
         return label;
     }
+    
+    /**
+     * Creates a Label with the supplied name and adds it to the LabelType
+     * @param name the name of the Label
+     * @param type the LabelType
+     * @return the created Label
+     */
+    private Label createLabel(String name, LabelType type) {
+        Label label = datadictionaryFactory.eINSTANCE.createLabel();
+        label.setEntityName(name);
+        type.getLabel()
+                .add(label);
+        return label;
+    }
 
+    /**
+     * Creates a LabelType from the supplied CharacteristicValue
+     * @param charValue the CharacteristicValue
+     * @return the created LabelType
+     */
     private LabelType createLabelType(CharacteristicValue charValue) {
         LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
         type.setEntityName(charValue.getTypeName());
@@ -358,5 +474,241 @@ public class PCMConverter extends Converter {
                 .add(type);
         return type;
     }
+    
+    /**
+     * Creates a LabelType with the supplied name
+     * @param name the name of the LabelType
+     * @return the created LabelType
+     */
+    private LabelType createLabelType(String name) {
+        LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
+        type.setEntityName(name);
+        this.dataDictionary.getLabelTypes()
+                .add(type);
+        return type;
+    }
+    
+    /**
+     * Converts behavior from PCM Vertex to Node and adds it to the Data Dictionary
+     * @param pcmVertex the PCM Vertex
+     * @param node the DFD Node
+     * @param dataDictionary the Data Dictionary
+     */
+    public void convertBehavior(AbstractPCMVertex<?> pcmVertex, Node node, DataDictionary dataDictionary) {
+    	this.logger.setLevel(Level.TRACE);
+        logger.trace("Converting pcm vertex " + pcmVertex);
+    	List<ConfidentialityVariableCharacterisation> variableCharacterisations = new ArrayList<>();
+        if (pcmVertex.getReferencedElement() instanceof SetVariableAction setVariableAction) {
+            variableCharacterisations.addAll(setVariableAction.getLocalVariableUsages_SetVariableAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+        } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
+                && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
+                && callingSEFFPCMVertex.isCalling()) {
+            variableCharacterisations.addAll(externalCallAction.getInputVariableUsages__CallAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+        } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
+                && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
+                && callingSEFFPCMVertex.isReturning()) {
+            variableCharacterisations.addAll(externalCallAction.getReturnVariableUsage__CallReturnAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+        } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
+                && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
+                && callingUserPCMVertex.isCalling()) {
+            variableCharacterisations.addAll(entryLevelSystemCall.getInputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+        } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
+                && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
+                && callingUserPCMVertex.isReturning()) {
+            variableCharacterisations.addAll(entryLevelSystemCall.getOutputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+        }
 
+        Behaviour behaviour = node.getBehaviour();
+        List<AbstractAssignment> assignments = new ArrayList<>();
+        if (!(pcmVertex instanceof UserPCMVertex<?> vertex && vertex.getReferencedElement() instanceof Start)) {
+        	if (pcmVertex.getAllIncomingDataCharacteristics().isEmpty()) {
+        		pcmVertex.getAllOutgoingDataCharacteristics().forEach(it -> {
+        			Pin outPin = node.getBehaviour().getOutPin().stream()
+                            .filter(pin -> pin.getEntityName().equals(it.getVariableName()))
+                            .findAny().orElseThrow();
+        			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+        			assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+        			assignment.setOutputPin(outPin);
+        			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
+        		});
+        	}
+        	List<DataCharacteristic> dataCharacteristicsForwarded = pcmVertex.getAllIncomingDataCharacteristics().stream()
+        			.filter(it -> pcmVertex.getAllOutgoingDataCharacteristics().stream().anyMatch(ot -> it.getVariableName().equals(ot.getVariableName())))
+        			.toList();
+        	for(var dataCharacteristics : dataCharacteristicsForwarded) {
+        		logger.trace("Forwarding data characteristic " + dataCharacteristics.getVariableName());
+        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+            	Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
+                        .findAny().orElseThrow(() -> {
+                        	logger.error("Cannot find required in-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
+                        	return new NoSuchElementException();
+                        });
+        		Pin outPin = node.getBehaviour().getOutPin().stream()
+                    .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
+                    .findAny()
+                    .orElseThrow(() -> {
+                    	logger.error("Cannot find required out-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
+                    	return new NoSuchElementException();
+                    });
+        		assignment.getInputPins().add(inPin);
+            	assignment.setOutputPin(outPin);
+                assignments.add(assignment);          	
+        	}
+        	if (dataCharacteristicsForwarded.isEmpty() 
+        			&& pcmVertex.getAllIncomingDataCharacteristics().isEmpty()
+        			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()
+        			&& !(pcmVertex instanceof UserPCMVertex<?> && ((AbstractUserAction) pcmVertex.getReferencedElement())
+                    .getScenarioBehaviour_AbstractUserAction()
+                    .getUsageScenario_SenarioBehaviour() != null)) {
+        		logger.trace("Vertex has no propagated characteristics, forwarding empty");
+        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+            	Pin inPin = node.getBehaviour().getInPin().stream()
+                        .filter(it -> it.getEntityName().equals(""))
+                        .findAny()
+                        .orElseThrow(() -> {
+                        	logger.error("Cannot find required in-pin with empty name at vertex with name " + pcmVertex);
+                        	return new NoSuchElementException();
+                        });
+        		Pin outPin = node.getBehaviour().getOutPin().stream()
+                    .filter(it -> it.getEntityName().equals(""))
+                    .findAny()
+                    .orElseThrow(() -> {
+                    	logger.error("Cannot find required out-pin with empty name at vertex with name " + pcmVertex);
+                    	return new NoSuchElementException();
+                    });
+        		assignment.getInputPins().add(inPin);
+            	assignment.setOutputPin(outPin);
+                assignments.add(assignment);       
+        	}
+        }
+        for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
+        	logger.trace("Processing assignment");
+            var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
+
+            EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
+            Literal characteristicValue = leftHandSide.getLiteral();
+            AbstractNamedReference reference = variableCharacterisation.getVariableUsage_VariableCharacterisation()
+                    .getNamedReference__VariableUsage();
+
+
+            Term rightHandSide = variableCharacterisation.getRhs();
+
+            if (characteristicType == null && characteristicValue == null) {
+            	logger.trace("Processing full forwarding assignment");
+            	ForwardingAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+                Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                        .findAny().orElseThrow();
+                assignment.setOutputPin(outPin);    
+                Pin inPin;
+               
+                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {                	 
+                    inPin = node.getBehaviour().getInPin().stream()
+                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()) || 
+                            		it.getEntityName().equals(""))
+                            .findAny().orElseThrow();
+                    assignment.getInputPins().add(inPin);	                
+                }
+                
+                assignments.add(assignment);
+            } else if (characteristicValue == null) {
+            	logger.trace("Processing half forwarding assignment");
+            	List<DataCharacteristic> forwardedValues = pcmVertex.getAllIncomingDataCharacteristics().stream()
+            			.filter(it -> it.getVariableName().equals(reference.getReferenceName()))
+            			.filter(it -> it.getAllCharacteristics().stream().anyMatch(dc -> dc.getTypeName().equals(characteristicType.getName())))
+            			.toList();
+            	for (DataCharacteristic forwardedValue : forwardedValues) {
+            		for(CharacteristicValue forwardedCharacterisicValue : forwardedValue.getAllCharacteristics()) {
+            			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+                		LabelType labelType = dataDictionary.getLabelTypes().stream()
+                                .filter(it -> it.getEntityName().equals(characteristicType.getName()))
+                                .findAny().orElseThrow();
+
+                        Label label = labelType.getLabel().stream()
+                                .filter(it -> it.getEntityName().equals(forwardedCharacterisicValue.getTypeName()))
+                                .findAny().orElseThrow();
+                        assignment.getOutputLabels().add(label);
+
+                        Pin outPin = node.getBehaviour().getOutPin().stream()
+                                .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                                .findAny().orElseThrow();
+                        assignment.setOutputPin(outPin);
+                        org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                        assignment.setTerm(term);
+                        if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                            Pin inPin = node.getBehaviour().getInPin().stream()
+                                    .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                                    .findAny().orElseThrow();
+                            assignment.getInputPins().add(inPin);
+                        } else {
+                        	// This case occurs, when term is true (so no dependence on input pin)
+                        }
+            		}
+            	}
+            } else {
+            	logger.trace("Processing assignment");
+                Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+            	LabelType labelType = getOrCreateLabelType(characteristicType.getName());
+
+                Label label = getOrCreateDFDLabel(characteristicValue.getName(), labelType);
+                assignment.getOutputLabels().add(label);
+
+                Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                        .findAny().orElseThrow();
+                assignment.setOutputPin(outPin);
+                org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+                assignment.setTerm(term);
+                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+                    Pin inPin = node.getBehaviour().getInPin().stream()
+                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                            .findAny().orElseThrow();
+                    assignment.getInputPins().add(inPin);
+                } 
+                assignments.add(assignment);
+            }
+        }
+        behaviour.getAssignment().clear();
+        behaviour.getAssignment().addAll(assignments);
+        logger.trace("Processing of vertex finished");
+        logger.trace("--------------------------");
+    }
+
+    /**
+     * Parses a Term object into a corresponding Data Dictionary Term
+     * @param rightHandSide the Term object to parse
+     * @param dataDictionary the Data Dictionary
+     * @return the parsed Term
+     */
+    public org.dataflowanalysis.dfd.datadictionary.Term parseTerm(Term rightHandSide, DataDictionary dataDictionary) {
+        if(rightHandSide instanceof True) {
+            return datadictionaryFactory.eINSTANCE.createTRUE();
+        } else if (rightHandSide instanceof False) {
+            NOT term = datadictionaryFactory.eINSTANCE.createNOT();
+            term.setNegatedTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+            return term;
+        } else if (rightHandSide instanceof Or or) {
+            OR term = datadictionaryFactory.eINSTANCE.createOR();
+            term.getTerms().add(parseTerm(or.getLeft(), dataDictionary));
+            term.getTerms().add(parseTerm(or.getRight(), dataDictionary));
+            return term;
+        } else if (rightHandSide instanceof And and) {
+            AND term = datadictionaryFactory.eINSTANCE.createAND();
+            term.getTerms().add(parseTerm(and.getLeft(), dataDictionary));
+            term.getTerms().add(parseTerm(and.getRight(), dataDictionary));
+            return term;
+        } else if (rightHandSide instanceof NamedEnumCharacteristicReference characteristicReference) {
+            LabelReference term = datadictionaryFactory.eINSTANCE.createLabelReference();
+            LabelType labelType = dataDictionary.getLabelTypes().stream()
+                    .filter(it -> it.getEntityName().equals(characteristicReference.getCharacteristicType().getName()))
+                    .findAny().orElseThrow();
+            Label label = labelType.getLabel().stream()
+                    .filter(it -> it.getEntityName().equals(characteristicReference.getLiteral().getName()))
+                    .findAny().orElseThrow();
+            term.setLabel(label);
+        }
+        throw new IllegalStateException();
+    }
 }
+
