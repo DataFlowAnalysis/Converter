@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,10 +34,12 @@ import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder
  */
 public class DataFlowDiagramConverter extends Converter {
 
-    private Map<Pin, String> inputPinToFlowNameMap;
+    private Map<Pin, List<String>> inputPinToFlowNamesMap;
     private final dataflowdiagramFactory dfdFactory;
     private final datadictionaryFactory ddFactory;
     private Map<String, Node> idToNodeMap;
+    
+    private final static String DELIMITER = ";";
 
     private final Logger logger = Logger.getLogger(DataFlowDiagramConverter.class);
 
@@ -316,7 +320,7 @@ public class DataFlowDiagramConverter extends Converter {
     }
 
     private WebEditorDfd processDfd(DataFlowDiagram dataFlowDiagram, DataDictionary dataDictionary) {
-        inputPinToFlowNameMap = new HashMap<>();
+        inputPinToFlowNamesMap = new HashMap<>();
         List<Child> children = new ArrayList<>();
         List<WebEditorLabelType> labelTypes = new ArrayList<>();
 
@@ -374,7 +378,7 @@ public class DataFlowDiagramConverter extends Converter {
 
     private void createFlows(DataFlowDiagram dataFlowDiagram, List<Child> children) {
         for (Flow flow : dataFlowDiagram.getFlows()) {
-            inputPinToFlowNameMap.put(flow.getDestinationPin(), flow.getEntityName());
+            fillPinToFlowNamesMap(inputPinToFlowNamesMap,flow);
             children.add(createWebFlow(flow));
         }
     }
@@ -415,12 +419,17 @@ public class DataFlowDiagramConverter extends Converter {
         for (AbstractAssignment abstractAssignment : abstractAssignments) {
             if (abstractAssignment instanceof ForwardingAssignment) {
                 for (Pin inPin : abstractAssignment.getInputPins()) {
-                	var flowName = inputPinToFlowNameMap.get(inPin);
-                	if(!flowName.equals("")) {
-                		builder.append("forward ")
-                        .append(flowName)
-                        .append("\n");
-                	}       
+                    var flowNames = inputPinToFlowNamesMap.get(inPin)
+                            .stream()
+                            .sorted()
+                            .toList();
+                    var flowName = String.join(DELIMITER, flowNames);
+                    // Dont forward if name is empty or only delimiters
+                    if (!flowName.matches(String.format("^$|^%s+$", DELIMITER))) {
+                        builder.append("forward ")
+                                .append(flowName)
+                                .append("\n");
+                    }
                 }
             } else {
                 Assignment assignment = (Assignment) abstractAssignment;
@@ -446,16 +455,27 @@ public class DataFlowDiagramConverter extends Converter {
         var behavior = node.getBehaviour();
         for (String behaviorString : behaviorStrings) {
             if (behaviorString.contains("forward ")) {
-                String packet = behaviorString.split(" ")[1];
+                List<String> packets = Arrays.asList(behaviorString.split(" ")[1].split(DELIMITER));
 
-                Pin inpin = dfd.getFlows()
+                List<Flow> flowsToNode = dfd.getFlows()
                         .stream()
                         .filter(flow -> flow.getDestinationNode() == node)
-                        .filter(flow -> flow.getEntityName()
-                                .equals(packet))
-                        .map(Flow::getDestinationPin)
-                        .findAny()
-                        .orElse(null);
+                        .toList();
+                
+                Map<Pin,List<String>>pinToFlowNames = new HashMap<>();
+                for (var flow : flowsToNode) {
+                    fillPinToFlowNamesMap(pinToFlowNames,flow);  
+                }
+                
+                Pin inpin=null;
+                for (var currentInpin:pinToFlowNames.keySet()) {
+                    var names=pinToFlowNames.get(currentInpin);
+                    Collections.sort(names);
+                    if (names.equals(packets)) {
+                        inpin = currentInpin;
+                        break;
+                    }  
+                }        
 
                 var assignment = ddFactory.createForwardingAssignment();
                 assignment.setOutputPin(outpin);
@@ -503,6 +523,17 @@ public class DataFlowDiagramConverter extends Converter {
 
                 assignment.setTerm(term);
             }
+        }
+    }
+
+    private void fillPinToFlowNamesMap(Map<Pin,List<String>> map,Flow flow) {
+        if (map.containsKey(flow.getDestinationPin())) {
+            map.get(flow.getDestinationPin())
+                    .add(flow.getEntityName());
+        } else {
+            List<String> flowNames = new ArrayList<>();
+            flowNames.add(flow.getEntityName());
+            map.put(flow.getDestinationPin(), flowNames);
         }
     }
 
