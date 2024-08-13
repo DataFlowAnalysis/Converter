@@ -34,13 +34,14 @@ public class TUHHPipeline {
     public static final List<Integer> OUT_OF_SCOPE_VARIANTS = List.of(13, 14, 15, 16, 17);
 
     public static final Map<String, List<Integer>> FAULTY_VARIANTS = ImmutableMap.<String, List<Integer>>builder()
-            .put("anilallewar", List.of(6))
+            .put("callistaenterprise", List.of(4))
             .put("ewolff", List.of(3, 6))
             .put("fernandoabcampos", List.of(3, 6))
+            .put("jferrater", List.of(1, 4))
             .put("mdeket", List.of(3, 6))
             .put("mudigal-technologies", List.of(3, 6))
             .put("rohitghatol", List.of(11))
-            .put("sqshq", List.of(6))
+            .put("spring-petclinic", List.of(4))
             .put("georgwittberger", List.of(9))
             .build();
 
