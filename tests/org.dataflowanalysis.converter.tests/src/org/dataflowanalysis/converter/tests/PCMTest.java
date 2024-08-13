@@ -96,12 +96,14 @@ public class PCMTest extends ConverterTest{
 
         assertEquals(dfd.getNodes().size(), vertices.size());
         
-        DFDTransposeFlowGraphFinder dfdTransposeFlowGraphFinder = new DFDTransposeFlowGraphFinder(dd, dfd);
-        var dfdTFGCollection = dfdTransposeFlowGraphFinder.findTransposeFlowGraphs().
-        		stream().map(it -> {return it.evaluate();}
-        ).toList();
+       
 
         if (constraint != null) {
+        	 DFDTransposeFlowGraphFinder dfdTransposeFlowGraphFinder = new DFDTransposeFlowGraphFinder(dd, dfd);
+             var dfdTFGCollection = dfdTransposeFlowGraphFinder.findTransposeFlowGraphs().
+             		stream().map(it -> {return it.evaluate();}
+             ).toList();
+        	
 	        List<String> nodeIds = new ArrayList<>();
 	        for (Node node : dfd.getNodes()) {
 	            nodeIds.add(node.getId());
