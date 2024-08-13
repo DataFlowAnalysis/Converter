@@ -192,6 +192,13 @@ public class PCMConverter extends Converter {
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
         	transposeFlowGraph.getVertices().forEach(v -> createBehaviour((AbstractPCMVertex<? extends Entity>)v));
         }
+        
+        flowGraphCollection.getTransposeFlowGraphs().stream().map(it -> it.getSink()).forEach(sink -> {
+        	var node = dfdNodeMap.get(sink);
+        	node.getBehaviour().getOutPin().clear();
+        	node.getBehaviour().getAssignment().clear();
+        });
+        
         return new DataFlowDiagramAndDictionary(dataFlowDiagram, dataDictionary);
     }
     
@@ -308,6 +315,11 @@ public class PCMConverter extends Converter {
     	
     	sourceNode.getBehaviour().getOutPin().add(outPin);
     	destinationNode.getBehaviour().getInPin().add(inPin);
+    	
+    	var assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+    	assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+    	
+    	assignment.setOutputPin(outPin);
     }
 
    /**
@@ -350,7 +362,7 @@ public class PCMConverter extends Converter {
         
         var id = pcmVertex.getReferencedElement()
                 .getId();
-        if (takenIds.contains(id)) id += "_1";
+        while (takenIds.contains(id)) id += "_1";
         
         node.setId(id);
         takenIds.add(id);
@@ -642,8 +654,9 @@ public class PCMConverter extends Converter {
                                     .findAny().orElseThrow();
                             assignment.getInputPins().add(inPin);
                         } else {
-                        	// This case occurs, when term is true (so no dependence on input pin)
+                        	assignment.getInputPins().addAll(behaviour.getInPin());
                         }
+                        assignments.add(assignment);
             		}
             	}
             } else {
@@ -665,12 +678,24 @@ public class PCMConverter extends Converter {
                             .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
                             .findAny().orElseThrow();
                     assignment.getInputPins().add(inPin);
-                } 
+                } else {
+                	assignment.getInputPins().addAll(behaviour.getInPin());
+                }
                 assignments.add(assignment);
             }
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
+
+        behaviour.getOutPin().stream().forEach(pin -> {
+        	Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+        	assignment.setEntityName("Dummy Assignment");
+        	assignment.getInputPins().addAll(behaviour.getInPin());
+        	assignment.setOutputPin(pin);
+        	assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+        	behaviour.getAssignment().add(assignment);
+        });
+        
         logger.trace("Processing of vertex finished");
         logger.trace("--------------------------");
     }
