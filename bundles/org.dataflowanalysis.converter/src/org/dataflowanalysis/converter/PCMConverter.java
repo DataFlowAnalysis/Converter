@@ -501,170 +501,221 @@ public class PCMConverter extends Converter {
     }
     
     /**
-     * Converts behavior from PCM Vertex to Node and adds it to the Data Dictionary
-     * @param pcmVertex the PCM Vertex
-     * @param node the DFD Node
-     * @param dataDictionary the Data Dictionary
+     * Determines the variable characterizations for a given PCM vertex
+     * @param vertex Given PCM vertex of which the variable characterizations should be found
+     * @return Returns a list of variable characterizations of the given vertex
      */
-    public void convertBehavior(AbstractPCMVertex<?> pcmVertex, Node node, DataDictionary dataDictionary) {
-    	this.logger.setLevel(Level.TRACE);
-        logger.trace("Converting pcm vertex " + pcmVertex);
-    	List<ConfidentialityVariableCharacterisation> variableCharacterisations = new ArrayList<>();
-        if (pcmVertex.getReferencedElement() instanceof SetVariableAction setVariableAction) {
-            variableCharacterisations.addAll(setVariableAction.getLocalVariableUsages_SetVariableAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
-        } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
-                && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
+    private List<ConfidentialityVariableCharacterisation> getVariableCharacterizations(AbstractPCMVertex<?> vertex) {
+    	if (vertex.getReferencedElement() instanceof SetVariableAction setVariableAction) {
+            return setVariableAction.getLocalVariableUsages_SetVariableAction().stream()
+            		.map(VariableUsage::getVariableCharacterisation_VariableUsage)
+            		.flatMap(List::stream)
+            		.filter(ConfidentialityVariableCharacterisation.class::isInstance)
+            		.map(ConfidentialityVariableCharacterisation.class::cast)
+            		.toList();
+        } else if (vertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
+                && vertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
                 && callingSEFFPCMVertex.isCalling()) {
-            variableCharacterisations.addAll(externalCallAction.getInputVariableUsages__CallAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
-        } else if (pcmVertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
-                && pcmVertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
+            return externalCallAction.getInputVariableUsages__CallAction().stream()
+            		.map(VariableUsage::getVariableCharacterisation_VariableUsage)
+            		.flatMap(List::stream)
+            		.filter(ConfidentialityVariableCharacterisation.class::isInstance)
+            		.map(ConfidentialityVariableCharacterisation.class::cast)
+            		.toList();
+        } else if (vertex.getReferencedElement() instanceof ExternalCallAction externalCallAction
+                && vertex instanceof CallingSEFFPCMVertex callingSEFFPCMVertex
                 && callingSEFFPCMVertex.isReturning()) {
-            variableCharacterisations.addAll(externalCallAction.getReturnVariableUsage__CallReturnAction().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
-        } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
-                && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
+            return externalCallAction.getReturnVariableUsage__CallReturnAction().stream()
+            		.map(VariableUsage::getVariableCharacterisation_VariableUsage)
+            		.flatMap(List::stream)
+            		.filter(ConfidentialityVariableCharacterisation.class::isInstance)
+            		.map(ConfidentialityVariableCharacterisation.class::cast)
+            		.toList();
+        } else if (vertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
+                && vertex instanceof CallingUserPCMVertex callingUserPCMVertex
                 && callingUserPCMVertex.isCalling()) {
-            variableCharacterisations.addAll(entryLevelSystemCall.getInputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
-        } else if (pcmVertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
-                && pcmVertex instanceof CallingUserPCMVertex callingUserPCMVertex
+            return entryLevelSystemCall.getInputParameterUsages_EntryLevelSystemCall().stream()
+            		.map(VariableUsage::getVariableCharacterisation_VariableUsage)
+            		.flatMap(List::stream)
+            		.filter(ConfidentialityVariableCharacterisation.class::isInstance)
+            		.map(ConfidentialityVariableCharacterisation.class::cast)
+            		.toList();
+        } else if (vertex.getReferencedElement() instanceof EntryLevelSystemCall entryLevelSystemCall
+                && vertex instanceof CallingUserPCMVertex callingUserPCMVertex
                 && callingUserPCMVertex.isReturning()) {
-            variableCharacterisations.addAll(entryLevelSystemCall.getOutputParameterUsages_EntryLevelSystemCall().stream().map(VariableUsage::getVariableCharacterisation_VariableUsage).flatMap(List::stream).filter(ConfidentialityVariableCharacterisation.class::isInstance).map(ConfidentialityVariableCharacterisation.class::cast).toList());
+            return entryLevelSystemCall.getOutputParameterUsages_EntryLevelSystemCall().stream()
+            		.map(VariableUsage::getVariableCharacterisation_VariableUsage)
+            		.flatMap(List::stream)
+            		.filter(ConfidentialityVariableCharacterisation.class::isInstance)
+            		.map(ConfidentialityVariableCharacterisation.class::cast)
+            		.toList();
+        } else {
+        	return List.of();
         }
-
-        Behaviour behaviour = node.getBehaviour();
-        List<AbstractAssignment> assignments = new ArrayList<>();
-        if (!(pcmVertex instanceof UserPCMVertex<?> vertex && vertex.getReferencedElement() instanceof Start)) {
-        	if (pcmVertex.getAllIncomingDataCharacteristics().isEmpty()) {
-        		pcmVertex.getAllOutgoingDataCharacteristics().forEach(it -> {
-        			Pin outPin = node.getBehaviour().getOutPin().stream()
-                            .filter(pin -> pin.getEntityName().equals(it.getVariableName()))
-                            .findAny().orElseThrow();
-        			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-        			assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
-        			assignment.setOutputPin(outPin);
-        			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
-        		});
-        	}
-        	List<DataCharacteristic> dataCharacteristicsForwarded = pcmVertex.getAllIncomingDataCharacteristics().stream()
-        			.filter(it -> pcmVertex.getAllOutgoingDataCharacteristics().stream().anyMatch(ot -> it.getVariableName().equals(ot.getVariableName())))
-        			.toList();
-        	for(var dataCharacteristics : dataCharacteristicsForwarded) {
-        		logger.trace("Forwarding data characteristic " + dataCharacteristics.getVariableName());
-        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
-            	Pin inPin = node.getBehaviour().getInPin().stream()
-                        .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
-                        .findAny().orElseThrow(() -> {
-                        	logger.error("Cannot find required in-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
-                        	return new NoSuchElementException();
-                        });
-        		Pin outPin = node.getBehaviour().getOutPin().stream()
-                    .filter(it -> it.getEntityName().equals(dataCharacteristics.getVariableName()))
-                    .findAny()
-                    .orElseThrow(() -> {
-                    	logger.error("Cannot find required out-pin " + dataCharacteristics.getVariableName() + " at vertex with name " + pcmVertex);
-                    	return new NoSuchElementException();
-                    });
-        		assignment.getInputPins().add(inPin);
-            	assignment.setOutputPin(outPin);
-                assignments.add(assignment);          	
-        	}
-        	if (dataCharacteristicsForwarded.isEmpty() 
-        			&& pcmVertex.getAllIncomingDataCharacteristics().isEmpty()
-        			&& pcmVertex.getAllOutgoingDataCharacteristics().isEmpty()
-        			&& !(pcmVertex instanceof UserPCMVertex<?> && ((AbstractUserAction) pcmVertex.getReferencedElement())
+    }
+    
+    /**
+     * Determines the assignments for the DFD nodes that can be inferred by the characteristics of the PCM vertex
+     * @param vertex PCM vertex of which the characteristics are read from
+     * @param node DFD node to which the assignments should be added
+     * @return Returns a list of assignments that should be added to the DFD node
+     */
+    private List<AbstractAssignment> getAssignments(AbstractPCMVertex<?> vertex, Node node) {
+    	if (vertex instanceof UserPCMVertex<?> && vertex.getReferencedElement() instanceof Start) {
+    		return List.of();
+    	}
+    	
+    	List<AbstractAssignment> assignments = new ArrayList<>();
+        List<DataCharacteristic> dataCharacteristicsForwarded = vertex.getAllIncomingDataCharacteristics().stream()
+        	.filter(it -> vertex.getAllOutgoingDataCharacteristics().stream().anyMatch(ot -> it.getVariableName().equals(ot.getVariableName())))
+        	.toList();
+        for(DataCharacteristic dataCharacteristic : dataCharacteristicsForwarded) {
+            assignments.add(this.forwardCharacteristic(node, vertex, dataCharacteristic));          	
+        }
+        if (dataCharacteristicsForwarded.isEmpty() 
+        		&& vertex.getAllIncomingDataCharacteristics().isEmpty()
+        		&& vertex.getAllOutgoingDataCharacteristics().isEmpty()
+        		&& !(vertex instanceof UserPCMVertex<?> && ((AbstractUserAction) vertex.getReferencedElement())
                     .getScenarioBehaviour_AbstractUserAction()
                     .getUsageScenario_SenarioBehaviour() != null)) {
-        		logger.trace("Vertex has no propagated characteristics, forwarding empty");
-        		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
-            	Pin inPin = node.getBehaviour().getInPin().stream()
-                        .filter(it -> it.getEntityName().equals(""))
-                        .findAny()
-                        .orElseThrow(() -> {
-                        	logger.error("Cannot find required in-pin with empty name at vertex with name " + pcmVertex);
-                        	return new NoSuchElementException();
-                        });
-        		Pin outPin = node.getBehaviour().getOutPin().stream()
-                    .filter(it -> it.getEntityName().equals(""))
-                    .findAny()
-                    .orElseThrow(() -> {
-                    	logger.error("Cannot find required out-pin with empty name at vertex with name " + pcmVertex);
-                    	return new NoSuchElementException();
-                    });
-        		assignment.getInputPins().add(inPin);
-            	assignment.setOutputPin(outPin);
-                assignments.add(assignment);       
-        	}
+        	assignments.add(this.preserveControlFlow(node, vertex));
         }
-        for (ConfidentialityVariableCharacterisation variableCharacterisation : variableCharacterisations) {
-        	logger.trace("Processing assignment");
-            var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
+        return assignments;
+    }
+    
+    /**
+     * Creates an assignment that forwards the given data characteristics of the PCM vertex in the given DFD node
+     * @param node DFD node that should receive the created assignment
+     * @param vertex PCM vertex that determines the assignment behavior
+     * @param dataCharacteristic Data characteristic that is forwarded
+     * @return Returns an assignment that forwards the given data characteristic
+     */
+    private AbstractAssignment forwardCharacteristic(Node node, AbstractPCMVertex<?> vertex, DataCharacteristic dataCharacteristic) {
+    	AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+        Pin inPin = node.getBehaviour().getInPin().stream()
+        		.filter(it -> it.getEntityName().equals(dataCharacteristic.getVariableName()))
+                .findAny().orElseThrow(() -> {
+                	logger.error("Cannot find required in-pin " + dataCharacteristic.getVariableName() + " at vertex with name " + vertex);
+                    return new NoSuchElementException();
+                });
+    	Pin outPin = node.getBehaviour().getOutPin().stream()
+            .filter(it -> it.getEntityName().equals(dataCharacteristic.getVariableName()))
+            .findAny()
+            .orElseThrow(() -> {
+                logger.error("Cannot find required out-pin " + dataCharacteristic.getVariableName() + " at vertex with name " + vertex);
+                return new NoSuchElementException();
+            });
+    	assignment.getInputPins().add(inPin);
+        assignment.setOutputPin(outPin);
+        return assignment;
+    }
+    
+    /**
+     * Preserves the control flow between converted vertices, by forwarding an empty value
+     * @param node DFD node that should reflect the control flow of the given PCM vertex
+     * @param vertex PCM vertex that dictates the control flow
+     * @return Returns an assignment that preserves the control flow between the elements in the conversion
+     */
+    private AbstractAssignment preserveControlFlow(Node node, AbstractPCMVertex<?> vertex) {
+		AbstractAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();            	
+    	Pin inPin = node.getBehaviour().getInPin().stream()
+                .filter(it -> it.getEntityName().equals(""))
+                .findAny()
+                .orElseThrow(() -> {
+                	logger.error("Cannot find required in-pin with empty name at vertex with name " + vertex);
+                	return new NoSuchElementException();
+                });
+		Pin outPin = node.getBehaviour().getOutPin().stream()
+            .filter(it -> it.getEntityName().equals(""))
+            .findAny()
+            .orElseThrow(() -> {
+            	logger.error("Cannot find required out-pin with empty name at vertex with name " + vertex);
+            	return new NoSuchElementException();
+            });
+		assignment.getInputPins().add(inPin);
+    	assignment.setOutputPin(outPin);
+    	return assignment;
+    }
+    
+    /**
+     * Processes the given variable characterization with the given converted DFD behavior and node with a given PCM vertex
+     * @param variableCharacterisation Variable characterization of the PCM vertex
+     * @param behaviour Resulting behavior of the DFD node
+     * @param node DFD node that is converted to
+     * @param vertex PCM vertex that is converted from
+     * @return Returns a list of all assignments that must be added to the DFD behavior to reflect the PCM variable characterization
+     */ 
+    private List<AbstractAssignment> processCharacterization(ConfidentialityVariableCharacterisation variableCharacterisation, Behaviour behaviour, Node node, AbstractPCMVertex<?> vertex) {
+        var leftHandSide = (LhsEnumCharacteristicReference) variableCharacterisation.getLhs();
 
-            EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
-            Literal characteristicValue = leftHandSide.getLiteral();
-            AbstractNamedReference reference = variableCharacterisation.getVariableUsage_VariableCharacterisation()
-                    .getNamedReference__VariableUsage();
+        EnumCharacteristicType characteristicType = (EnumCharacteristicType) leftHandSide.getCharacteristicType();
+        Literal characteristicValue = leftHandSide.getLiteral();
+        AbstractNamedReference reference = variableCharacterisation.getVariableUsage_VariableCharacterisation()
+                .getNamedReference__VariableUsage();
 
 
-            Term rightHandSide = variableCharacterisation.getRhs();
+        Term rightHandSide = variableCharacterisation.getRhs();
 
-            if (characteristicType == null && characteristicValue == null) {
-            	logger.trace("Processing full forwarding assignment");
-            	ForwardingAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
-                Pin outPin = node.getBehaviour().getOutPin().stream()
-                        .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+        if (characteristicType == null && characteristicValue == null) {
+        	return List.of(this.processFullForwardingAssignment(node, rightHandSide, reference));
+        } else if (characteristicValue == null) {
+        	return this.processHalfForwardingAssignment(node, rightHandSide, reference, vertex, behaviour, characteristicType);
+        } else {
+        	return List.of(this.processAssignment(node, rightHandSide, behaviour, reference, characteristicType, characteristicValue));
+        }
+    }
+    
+    /**
+     * Processes a full forwarding assignment on a PCM vertex, resulting in a single DFD forwarding assignment
+     * @param node DFD node that is converted to
+     * @param rightHandSide Term that determines the origin of the forwarded variable
+     * @param reference Reference that determines the destination of the forwarded variable
+     * @return Returns an DFD assignment that reflects the PCM full forwarding assignment
+     */
+    private AbstractAssignment processFullForwardingAssignment(Node node, Term rightHandSide, AbstractNamedReference reference) {
+    	if (!(rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference)) {
+    		return datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+    	}
+    	ForwardingAssignment assignment = datadictionaryFactory.eINSTANCE.createForwardingAssignment();
+        Pin outPin = node.getBehaviour().getOutPin().stream()
+                .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                .findAny().orElseThrow();
+        assignment.setOutputPin(outPin);    
+        Pin inPin = node.getBehaviour().getInPin().stream()
+        		.filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()) || 
+                    		it.getEntityName().equals(""))
+                .findAny()
+                .orElseThrow();
+        assignment.getInputPins().add(inPin);	   
+        return assignment;
+    }
+    
+    /**
+     * Process a half forwarding assignment on a PCM vertex, resulting in multiple DFD assignments that model the assignment
+     * @param node DFD node that is converted to
+     * @param rightHandSide Term that determines the data characteristic origin
+     * @param reference Reference that determines the data characteristic destination
+     * @param vertex PCM vertex that has the given assignment
+     * @param behaviour DFD behavior that is converted to
+     * @param characteristicType PCM characteristic type that is forwarded
+     * @return Returns a list of abstract assignments that reflects the forwarding of all characteristic values of a given type
+     */
+    private List<AbstractAssignment> processHalfForwardingAssignment(Node node, Term rightHandSide, AbstractNamedReference reference, AbstractPCMVertex<?> vertex, Behaviour behaviour, EnumCharacteristicType characteristicType) {
+    	List<AbstractAssignment> assignments = new ArrayList<>();
+    	List<DataCharacteristic> forwardedValues = vertex.getAllIncomingDataCharacteristics().stream()
+    			.filter(it -> it.getVariableName().equals(reference.getReferenceName()))
+    			.filter(it -> it.getAllCharacteristics().stream().anyMatch(dc -> dc.getTypeName().equals(characteristicType.getName())))
+    			.toList();
+    	for (DataCharacteristic forwardedValue : forwardedValues) {
+    		for(CharacteristicValue forwardedCharacterisicValue : forwardedValue.getAllCharacteristics()) {
+    			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+        		LabelType labelType = dataDictionary.getLabelTypes().stream()
+                        .filter(it -> it.getEntityName().equals(characteristicType.getName()))
                         .findAny().orElseThrow();
-                assignment.setOutputPin(outPin);    
-                Pin inPin;
-               
-                if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {                	 
-                    inPin = node.getBehaviour().getInPin().stream()
-                            .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()) || 
-                            		it.getEntityName().equals(""))
-                            .findAny().orElseThrow();
-                    assignment.getInputPins().add(inPin);	                
-                }
-                
-                assignments.add(assignment);
-            } else if (characteristicValue == null) {
-            	logger.trace("Processing half forwarding assignment");
-            	List<DataCharacteristic> forwardedValues = pcmVertex.getAllIncomingDataCharacteristics().stream()
-            			.filter(it -> it.getVariableName().equals(reference.getReferenceName()))
-            			.filter(it -> it.getAllCharacteristics().stream().anyMatch(dc -> dc.getTypeName().equals(characteristicType.getName())))
-            			.toList();
-            	for (DataCharacteristic forwardedValue : forwardedValues) {
-            		for(CharacteristicValue forwardedCharacterisicValue : forwardedValue.getAllCharacteristics()) {
-            			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-                		LabelType labelType = dataDictionary.getLabelTypes().stream()
-                                .filter(it -> it.getEntityName().equals(characteristicType.getName()))
-                                .findAny().orElseThrow();
 
-                        Label label = labelType.getLabel().stream()
-                                .filter(it -> it.getEntityName().equals(forwardedCharacterisicValue.getTypeName()))
-                                .findAny().orElseThrow();
-                        assignment.getOutputLabels().add(label);
-
-                        Pin outPin = node.getBehaviour().getOutPin().stream()
-                                .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
-                                .findAny().orElseThrow();
-                        assignment.setOutputPin(outPin);
-                        org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
-                        assignment.setTerm(term);
-                        if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
-                            Pin inPin = node.getBehaviour().getInPin().stream()
-                                    .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
-                                    .findAny().orElseThrow();
-                            assignment.getInputPins().add(inPin);
-                        } else {
-                        	assignment.getInputPins().addAll(behaviour.getInPin());
-                        }
-                        assignments.add(assignment);
-            		}
-            	}
-            } else {
-            	logger.trace("Processing assignment");
-                Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
-            	LabelType labelType = getOrCreateLabelType(characteristicType.getName());
-
-                Label label = getOrCreateDFDLabel(characteristicValue.getName(), labelType);
+                Label label = labelType.getLabel().stream()
+                        .filter(it -> it.getEntityName().equals(forwardedCharacterisicValue.getTypeName()))
+                        .findAny().orElseThrow();
                 assignment.getOutputLabels().add(label);
 
                 Pin outPin = node.getBehaviour().getOutPin().stream()
@@ -682,7 +733,58 @@ public class PCMConverter extends Converter {
                 	assignment.getInputPins().addAll(behaviour.getInPin());
                 }
                 assignments.add(assignment);
-            }
+    		}
+    	}
+    	return assignments;
+    }
+    
+    /**
+     * Process an assignment on the given node with the given characteristic type and value as well as the pin
+     * @param node DFD node that is converted to
+     * @param rightHandSide Condition that reflects the value of the targeted data characteristic
+     * @param behaviour DFD behavior that is converted to
+     * @param reference Reference that determines the destination of the assignment
+     * @param characteristicType Characteristic type that is assigned to
+     * @param characteristicValue Characteristic value that is assigned to
+     * @return Returns an assignment that models the PCM behavior at the given vertex
+     */
+    private AbstractAssignment processAssignment(Node node, Term rightHandSide, Behaviour behaviour, AbstractNamedReference reference, EnumCharacteristicType characteristicType, Literal characteristicValue) {
+        Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+    	LabelType labelType = getOrCreateLabelType(characteristicType.getName());
+
+        Label label = getOrCreateDFDLabel(characteristicValue.getName(), labelType);
+        assignment.getOutputLabels().add(label);
+
+        Pin outPin = node.getBehaviour().getOutPin().stream()
+                .filter(it -> it.getEntityName().equals(reference.getReferenceName()))
+                .findAny().orElseThrow();
+        assignment.setOutputPin(outPin);
+        org.dataflowanalysis.dfd.datadictionary.Term term = parseTerm(rightHandSide, dataDictionary);
+        assignment.setTerm(term);
+        if (rightHandSide instanceof NamedEnumCharacteristicReference namedEnumCharacteristicReference) {
+            Pin inPin = node.getBehaviour().getInPin().stream()
+                    .filter(it -> it.getEntityName().equals(namedEnumCharacteristicReference.getNamedReference().getReferenceName()))
+                    .findAny().orElseThrow();
+            assignment.getInputPins().add(inPin);
+        } else {
+        	assignment.getInputPins().addAll(behaviour.getInPin());
+        }
+        return assignment;
+    }
+    
+    /**
+     * Converts behavior from PCM Vertex to Node and adds it to the Data Dictionary
+     * @param pcmVertex the PCM Vertex
+     * @param node the DFD Node
+     * @param dataDictionary the Data Dictionary
+     */
+    public void convertBehavior(AbstractPCMVertex<?> pcmVertex, Node node, DataDictionary dataDictionary) {
+    	List<ConfidentialityVariableCharacterisation> variableCharacterisations = this.getVariableCharacterizations(pcmVertex);
+
+        Behaviour behaviour = node.getBehaviour();
+        List<AbstractAssignment> assignments = this.getAssignments(pcmVertex, node);
+        for (ConfidentialityVariableCharacterisation variableCharacterization : variableCharacterisations) {
+        	assignments.addAll(this.processCharacterization(variableCharacterization, behaviour, node, pcmVertex));
         }
         behaviour.getAssignment().clear();
         behaviour.getAssignment().addAll(assignments);
@@ -695,9 +797,6 @@ public class PCMConverter extends Converter {
         	assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
         	behaviour.getAssignment().add(assignment);
         });
-        
-        logger.trace("Processing of vertex finished");
-        logger.trace("--------------------------");
     }
 
     /**
