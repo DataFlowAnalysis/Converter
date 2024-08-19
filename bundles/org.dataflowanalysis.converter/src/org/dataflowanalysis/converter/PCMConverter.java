@@ -564,8 +564,21 @@ public class PCMConverter extends Converter {
     	if (vertex instanceof UserPCMVertex<?> && vertex.getReferencedElement() instanceof Start) {
     		return List.of();
     	}
-    	
     	List<AbstractAssignment> assignments = new ArrayList<>();
+    	
+    	if (vertex.getAllIncomingDataCharacteristics().isEmpty()) {
+    		vertex.getAllOutgoingDataCharacteristics().forEach(it -> {
+    			Pin outPin = node.getBehaviour().getOutPin().stream()
+                        .filter(pin -> pin.getEntityName().equals(it.getVariableName()))
+                        .findAny().orElseThrow();
+    			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
+    			assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
+    			assignment.setOutputPin(outPin);
+    			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
+    			assignments.add(assignment);
+    		});
+    	}
+    	
         List<DataCharacteristic> dataCharacteristicsForwarded = vertex.getAllIncomingDataCharacteristics().stream()
         	.filter(it -> vertex.getAllOutgoingDataCharacteristics().stream().anyMatch(ot -> it.getVariableName().equals(ot.getVariableName())))
         	.toList();
