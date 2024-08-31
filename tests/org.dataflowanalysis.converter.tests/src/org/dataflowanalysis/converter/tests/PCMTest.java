@@ -29,7 +29,12 @@ import org.dataflowanalysis.analysis.dfd.DFDConfidentialityAnalysis;
 import org.dataflowanalysis.analysis.dfd.core.DFDTransposeFlowGraphFinder;
 import org.dataflowanalysis.analysis.pcm.PCMDataFlowConfidentialityAnalysisBuilder;
 import org.dataflowanalysis.analysis.pcm.core.AbstractPCMVertex;
+import org.dataflowanalysis.dfd.datadictionary.AND;
+import org.dataflowanalysis.dfd.datadictionary.Assignment;
 import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
+import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
+import org.dataflowanalysis.dfd.datadictionary.LabelReference;
+import org.dataflowanalysis.dfd.datadictionary.LabelType;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +57,69 @@ public class PCMTest extends ConverterTest{
     public void cwaToDfd() {
         testSpecificModel("CoronaWarnApp", "default", TEST_MODELS, "cwa.json", null);
     }
+	
+	@Test
+	@DisplayName("Test PCM2DFD TravelPlanner Behavior")
+	public void testTravelPlannerBehavior() {
+		final var usageModelPath = Paths.get("casestudies", "TravelPlanner", "travelPlanner.usagemodel")
+                .toString();
+        final var allocationPath = Paths.get("casestudies", "TravelPlanner", "travelPlanner.allocation")
+                .toString();
+        final var nodeCharPath = Paths.get("casestudies", "TravelPlanner",  "travelPlanner.nodecharacteristics")
+                .toString();
+
+        DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
+                .modelProjectName(TEST_MODELS)
+                .usePluginActivator(Activator.class)
+                .useUsageModel(usageModelPath)
+                .useAllocationModel(allocationPath)
+                .useNodeCharacteristicsModel(nodeCharPath)
+                .build();
+        
+        analysis.setLoggerLevel(Level.ALL);
+
+        analysis.initializeAnalysis();
+        var flowGraph = analysis.findFlowGraphs();
+        flowGraph.evaluate();
+
+       	List<AbstractPCMVertex<?>> vertices = new ArrayList<>();
+        for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraph.getTransposeFlowGraphs()) {
+            for (AbstractVertex<?> abstractVertex : transposeFlowGraph.getVertices()) {
+            	AbstractPCMVertex<?> v = (AbstractPCMVertex<?>) abstractVertex;
+               vertices.add(v);
+            }
+        }
+        
+        var dfd = new PCMConverter().pcmToDFD(TEST_MODELS, usageModelPath, allocationPath, nodeCharPath, Activator.class);
+        
+        // Assignment: flights.*.* := RETURN.*.*
+        var readFlightsFromDB = dfd.dataFlowDiagram().getNodes().stream()
+        		.filter(it -> it.getId().equals("_x32bcPViEeuMKba1Qn68bg_1"))
+        		.findAny().orElseThrow();
+        assertTrue(readFlightsFromDB.getBehaviour().getAssignment().stream()
+        		.filter(ForwardingAssignment.class::isInstance)
+        		.filter(it -> it.getInputPins().size() == 1)
+        		.filter(it -> it.getInputPins().get(0).getEntityName().equals("RETURN"))
+        		.anyMatch(it -> it.getOutputPin().getEntityName().equals("flights")));
+        
+        // Assignment: RETURN.GrantedRoles.* := query.GrantedRoles.* & flight.GrantedRoles.*
+        var selectFlightsBasedOnQuery = dfd.dataFlowDiagram().getNodes().stream()
+        		.filter(it -> it.getId().equals("_2AAjoPViEeuMKba1Qn68bg"))
+        		.findAny().orElseThrow();
+        assertEquals(2, selectFlightsBasedOnQuery.getBehaviour().getAssignment().stream()
+        		.filter(Assignment.class::isInstance)
+        		.map(Assignment.class::cast)
+        		.filter(it -> it.getOutputPin().getEntityName().equals("RETURN"))
+        		.filter(it -> it.getOutputLabels().size() == 1)
+        		.filter(it -> ((LabelType) it.getOutputLabels().get(0).eContainer()).getEntityName().equals("GrantedRoles"))
+        		.map(it -> it.getTerm())
+        		.filter(AND.class::isInstance)
+        		.map(AND.class::cast)
+        		.filter(it -> it.getTerms().size() == 2)
+        		.filter(it -> ((LabelType)((LabelReference) it.getTerms().get(0)).getLabel().eContainer()).getEntityName().equals("GrantedRoles"))
+        		.filter(it -> ((LabelType)((LabelReference) it.getTerms().get(1)).getLabel().eContainer()).getEntityName().equals("GrantedRoles"))
+        		.toList().size());
+	}
     
     private void testSpecificModel(String inputModel, String inputFile, String modelLocation, String webTarget, Predicate<AbstractVertex<?>> constraint) {
         final var usageModelPath = Paths.get("casestudies", inputModel, inputFile + ".usagemodel")
