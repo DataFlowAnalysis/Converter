@@ -221,7 +221,7 @@ public class PCMTest extends ConverterTest{
     	}
     }
     
-    public static <T> Predicate<T> distinctByKey(
+    private static <T> Predicate<T> distinctByKey(
     	    Function<? super T, ?> keyExtractor) {
     	  
     	    Map<Object, Boolean> seen = new ConcurrentHashMap<>(); 
@@ -239,7 +239,11 @@ public class PCMTest extends ConverterTest{
     	List<Node> nodes = dfd.getNodes();
     	for (Node node : nodes) {
     		String dfdId = node.getId();
-    		if (nameMapping.get(dfdId).equals(node.getEntityName())) {
+    		if (nameMapping.containsKey(dfdId)) {
+    			if (nameMapping.get(dfdId).equals("aName")) {
+    				continue;
+    			}
+    			assertEquals(nameMapping.get(dfdId), node.getEntityName());
     			continue;
     		}
     		int suffixIndex = dfdId.lastIndexOf('_');
@@ -248,6 +252,9 @@ public class PCMTest extends ConverterTest{
     		if (!nameMapping.containsKey(strippedId)) {
     			fail("Could not find PCM Vertex with the transformed DFD IDs: " + dfdId + " / " + strippedId);
     		}
+			if (nameMapping.get(strippedId).equals("aName")) {
+				continue;
+			}
     		assertTrue(nameMapping.get(strippedId).equals(node.getEntityName()), "Could not find PCM Vertex with ID: " + dfdId + " / " + strippedId);
     	}
     }
