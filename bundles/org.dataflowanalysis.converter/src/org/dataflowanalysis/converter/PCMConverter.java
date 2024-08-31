@@ -362,7 +362,9 @@ public class PCMConverter extends Converter {
         
         var id = pcmVertex.getReferencedElement()
                 .getId();
-        while (takenIds.contains(id)) id += "_1";
+        int occurrences = 1;
+        while (takenIds.contains(id)) occurrences++;
+        id += "_" + occurrences;
         
         node.setId(id);
         takenIds.add(id);
