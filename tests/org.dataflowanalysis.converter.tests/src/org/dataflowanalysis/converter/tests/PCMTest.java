@@ -12,8 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.HashSet;
 import java.util.stream.Collectors;
@@ -220,22 +218,25 @@ public class PCMTest extends ConverterTest{
     		assertTrue(ids.contains(strippedId), "Could not find PCM Vertex with ID: " + dfdId + " / " + strippedId);
     	}
     }
-    
-    private static <T> Predicate<T> distinctByKey(
-    	    Function<? super T, ?> keyExtractor) {
-    	  
-    	    Map<Object, Boolean> seen = new ConcurrentHashMap<>(); 
-    	    return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null; 
-    	}
-    
+        
     private void checkNames(FlowGraphCollection pcmFlowGraphs, DataFlowDiagram dfd) {
-    	Map<String, String> nameMapping = pcmFlowGraphs.getTransposeFlowGraphs().stream()
-    			.map(AbstractTransposeFlowGraph::getVertices)
-    			.flatMap(List::stream)
-    			.filter(it -> it instanceof AbstractPCMVertex<?>)
-    			.map(it -> (AbstractPCMVertex<?>) it)
-    			.filter(distinctByKey(it -> it.getReferencedElement().getId()))
-    			.collect(Collectors.toMap(it -> it.getReferencedElement().getId(), it -> it.getReferencedElement().getEntityName()));
+        var vertices = pcmFlowGraphs.getTransposeFlowGraphs()
+                .stream()
+                .map(AbstractTransposeFlowGraph::getVertices)
+                .flatMap(List::stream)
+                .filter(it -> it instanceof AbstractPCMVertex<?>)
+                .map(it -> (AbstractPCMVertex<?>) it)
+                .toList();
+
+        Map<String, String> nameMapping = new HashMap<>();
+
+        for (var vertex : vertices) {
+            nameMapping.putIfAbsent(vertex.getReferencedElement()
+                    .getId(),
+                    vertex.getReferencedElement()
+                            .getEntityName());
+        }
+        
     	List<Node> nodes = dfd.getNodes();
     	for (Node node : nodes) {
     		String dfdId = node.getId();
