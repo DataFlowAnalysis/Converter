@@ -179,18 +179,29 @@ public class PCMConverter extends Converter {
                 .getEntityName();
     }
 
-    @SuppressWarnings("unchecked")
 	private DataFlowDiagramAndDictionary processPalladio(FlowGraphCollection flowGraphCollection) {
         dataDictionary = datadictionaryFactory.eINSTANCE.createDataDictionary();
         dataFlowDiagram = dataflowdiagramFactory.eINSTANCE.createDataFlowDiagram();
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	transposeFlowGraph.getVertices().forEach(v -> processVertex((AbstractPCMVertex<? extends Entity>)v));
+        	transposeFlowGraph.getVertices()
+        	.stream()
+        	.filter(it -> it instanceof AbstractPCMVertex<?>)
+        	.map(it -> (AbstractPCMVertex<?>) it)
+        	.forEach(it -> processVertex(it));
         }
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	transposeFlowGraph.getVertices().forEach(v -> createFlowsForVertex((AbstractPCMVertex<? extends Entity>)v));
+        	transposeFlowGraph.getVertices()
+        	.stream()
+        	.filter(it -> it instanceof AbstractPCMVertex<?>)
+        	.map(it -> (AbstractPCMVertex<?>) it)
+        	.forEach(it -> createFlowsForVertex(it));
         } 
         for (AbstractTransposeFlowGraph transposeFlowGraph : flowGraphCollection.getTransposeFlowGraphs()) {
-        	transposeFlowGraph.getVertices().forEach(v -> createBehaviour((AbstractPCMVertex<? extends Entity>)v));
+        	transposeFlowGraph.getVertices()
+        	.stream()
+        	.filter(it -> it instanceof AbstractPCMVertex<?>)
+        	.map(it -> (AbstractPCMVertex<?>) it)
+        	.forEach(it -> createBehaviour(it));
         }
         
         flowGraphCollection.getTransposeFlowGraphs().stream().map(it -> it.getSink()).forEach(sink -> {
