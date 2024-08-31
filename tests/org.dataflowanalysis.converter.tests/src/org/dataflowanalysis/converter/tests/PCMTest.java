@@ -2,6 +2,7 @@ package org.dataflowanalysis.converter.tests;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import org.dataflowanalysis.dfd.datadictionary.DataDictionary;
 import org.dataflowanalysis.dfd.datadictionary.ForwardingAssignment;
 import org.dataflowanalysis.dfd.datadictionary.LabelReference;
 import org.dataflowanalysis.dfd.datadictionary.LabelType;
+import org.dataflowanalysis.dfd.dataflowdiagram.DataFlowDiagram;
 import org.dataflowanalysis.dfd.dataflowdiagram.Node;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -164,14 +166,11 @@ public class PCMTest extends ConverterTest{
 
         assertEquals(dfd.getNodes().size(), vertices.size());
         
-       
-
+        DFDTransposeFlowGraphFinder dfdTransposeFlowGraphFinder = new DFDTransposeFlowGraphFinder(dd, dfd);
+        var dfdTFGCollection = dfdTransposeFlowGraphFinder.findTransposeFlowGraphs().
+        		stream().map(it -> {return it.evaluate();}
+        ).toList();
         if (constraint != null) {
-        	 DFDTransposeFlowGraphFinder dfdTransposeFlowGraphFinder = new DFDTransposeFlowGraphFinder(dd, dfd);
-             var dfdTFGCollection = dfdTransposeFlowGraphFinder.findTransposeFlowGraphs().
-             		stream().map(it -> {return it.evaluate();}
-             ).toList();
-        	
 	        List<String> nodeIds = new ArrayList<>();
 	        for (Node node : dfd.getNodes()) {
 	            nodeIds.add(node.getId());
@@ -195,6 +194,56 @@ public class PCMTest extends ConverterTest{
         }
           
         checkLabels(dd, flowGraph);
+        checkIDPreserving(flowGraph, dfd);
+        checkNames(flowGraph, dfd);
+        checkTFGs(flowGraph, dfdTFGCollection);
+    }
+    
+    private void checkIDPreserving(FlowGraphCollection pcmFlowGraphs, DataFlowDiagram dfd) {
+    	List<String> ids = pcmFlowGraphs.getTransposeFlowGraphs().stream()
+    			.map(AbstractTransposeFlowGraph::getVertices)
+    			.flatMap(List::stream)
+    			.filter(it -> it instanceof AbstractPCMVertex<?>)
+    			.map(it -> (AbstractPCMVertex<?>) it)
+    			.map(it -> it.getReferencedElement().getId())
+    			.toList();
+    	List<Node> nodes = dfd.getNodes();
+    	for (Node node : nodes) {
+    		String dfdId = node.getId();
+    		if (ids.contains(dfdId)) {
+    			continue;
+    		}
+    		int suffixIndex = dfdId.lastIndexOf('_');
+    		String strippedId = dfdId.substring(0, suffixIndex);
+    		assertTrue(ids.contains(strippedId), "Could not find PCM Vertex with ID: " + dfdId + " / " + strippedId);
+    	}
+    }
+    
+    private void checkNames(FlowGraphCollection pcmFlowGraphs, DataFlowDiagram dfd) {
+    	Map<String, String> nameMapping = pcmFlowGraphs.getTransposeFlowGraphs().stream()
+    			.map(AbstractTransposeFlowGraph::getVertices)
+    			.flatMap(List::stream)
+    			.filter(it -> it instanceof AbstractPCMVertex<?>)
+    			.map(it -> (AbstractPCMVertex<?>) it)
+    			.collect(Collectors.toMap(it -> it.getReferencedElement().getId(), it -> it.getReferencedElement().getEntityName()));
+    	List<Node> nodes = dfd.getNodes();
+    	for (Node node : nodes) {
+    		String dfdId = node.getId();
+    		if (nameMapping.get(dfdId).equals(node.getEntityName())) {
+    			continue;
+    		}
+    		int suffixIndex = dfdId.lastIndexOf('_');
+    		String strippedId = dfdId.substring(0, suffixIndex);
+    		
+    		if (!nameMapping.containsKey(strippedId)) {
+    			fail("Could not find PCM Vertex with the transformed DFD IDs: " + dfdId + " / " + strippedId);
+    		}
+    		assertTrue(nameMapping.get(strippedId).equals(node.getEntityName()), "Could not find PCM Vertex with ID: " + dfdId + " / " + strippedId);
+    	}
+    }
+    
+    private void checkTFGs(FlowGraphCollection pcmFlowGraphs, List<AbstractTransposeFlowGraph> dfdFlowGraphs) {
+    	assertEquals(pcmFlowGraphs.getTransposeFlowGraphs().size(), dfdFlowGraphs.size());
     }
         
     private void checkLabels(DataDictionary dd, FlowGraphCollection flowGraph) {
