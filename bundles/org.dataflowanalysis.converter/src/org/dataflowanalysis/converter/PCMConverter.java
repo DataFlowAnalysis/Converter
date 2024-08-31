@@ -396,7 +396,8 @@ public class PCMConverter extends Converter {
      */
     private void addNodeCharacteristicsToNode(Node node, List<CharacteristicValue> charValues) {
         for (CharacteristicValue charValue : charValues) {
-            Label label = getOrCreateDFDLabel(charValue);
+        	LabelType type = this.getOrCreateLabelType(charValue.getTypeName());
+            Label label = this.getOrCreateDFDLabel(charValue.getValueName(), type);
             if (!node.getProperties()
                     .contains(label)) {
                 node.getProperties()
@@ -420,29 +421,6 @@ public class PCMConverter extends Converter {
     	 
     	 return type;
     }
-
-    /**
-     * Get or create a Label from the supplied CharacteristicValue
-     * @param charValue the CharacteristicValue
-     * @return the Label
-     */
-    private Label getOrCreateDFDLabel(CharacteristicValue charValue) {
-        LabelType type = dataDictionary.getLabelTypes()
-                .stream()
-                .filter(f -> f.getEntityName()
-                        .equals(charValue.getTypeName()))
-                .findFirst()
-                .orElseGet(() -> createLabelType(charValue));
-
-        Label label = type.getLabel()
-                .stream()
-                .filter(f -> f.getEntityName()
-                        .equals(charValue.getValueName()))
-                .findFirst()
-                .orElseGet(() -> createLabel(charValue, type));
-
-        return label;
-    }
     
     /**
      * Get or create a Label with the supplied String name and LabelType
@@ -460,20 +438,6 @@ public class PCMConverter extends Converter {
 
         return label;
     }
-
-    /**
-     * Creates a Label from the supplied CharacteristicValue and adds it to the LabelType
-     * @param charValue the CharacteristicValue
-     * @param type the LabelType
-     * @return the created Label
-     */
-    private Label createLabel(CharacteristicValue charValue, LabelType type) {
-        Label label = datadictionaryFactory.eINSTANCE.createLabel();
-        label.setEntityName(charValue.getValueName());
-        type.getLabel()
-                .add(label);
-        return label;
-    }
     
     /**
      * Creates a Label with the supplied name and adds it to the LabelType
@@ -487,19 +451,6 @@ public class PCMConverter extends Converter {
         type.getLabel()
                 .add(label);
         return label;
-    }
-
-    /**
-     * Creates a LabelType from the supplied CharacteristicValue
-     * @param charValue the CharacteristicValue
-     * @return the created LabelType
-     */
-    private LabelType createLabelType(CharacteristicValue charValue) {
-        LabelType type = datadictionaryFactory.eINSTANCE.createLabelType();
-        type.setEntityName(charValue.getTypeName());
-        this.dataDictionary.getLabelTypes()
-                .add(type);
-        return type;
     }
     
     /**
@@ -589,7 +540,10 @@ public class PCMConverter extends Converter {
     			Assignment assignment = datadictionaryFactory.eINSTANCE.createAssignment();
     			assignment.setTerm(datadictionaryFactory.eINSTANCE.createTRUE());
     			assignment.setOutputPin(outPin);
-    			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> getOrCreateDFDLabel(characteristicValue)).toList());
+    			assignment.getOutputLabels().addAll(it.getAllCharacteristics().stream().map(characteristicValue -> {
+    				LabelType type = this.getOrCreateLabelType(characteristicValue.getTypeName());
+    				return this.getOrCreateDFDLabel(characteristicValue.getValueName(), type);
+    			}).toList());
     			assignments.add(assignment);
     		});
     	}
