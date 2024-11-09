@@ -22,6 +22,7 @@ import org.dataflowanalysis.analysis.pcm.core.seff.CallingSEFFPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.seff.SEFFPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.CallingUserPCMVertex;
 import org.dataflowanalysis.analysis.pcm.core.user.UserPCMVertex;
+import org.dataflowanalysis.analysis.pcm.resource.PCMURIResourceProvider;
 import org.dataflowanalysis.analysis.pcm.utils.PCMQueryUtils;
 import org.dataflowanalysis.dfd.datadictionary.AbstractAssignment;
 import org.dataflowanalysis.dfd.datadictionary.Assignment;
@@ -39,6 +40,7 @@ import org.dataflowanalysis.pcm.extension.dictionary.characterized.DataDictionar
 import org.dataflowanalysis.pcm.extension.model.confidentiality.ConfidentialityVariableCharacterisation;
 import org.dataflowanalysis.pcm.extension.model.confidentiality.expression.NamedEnumCharacteristicReference;
 import org.eclipse.core.runtime.Plugin;
+import org.eclipse.emf.common.util.URI;
 import org.palladiosimulator.pcm.core.entity.Entity;
 import org.palladiosimulator.pcm.parameter.VariableUsage;
 import org.palladiosimulator.pcm.seff.*;
@@ -86,8 +88,9 @@ public class PCMConverter extends Converter {
 			String nodeCharPath, Class<? extends Plugin> activator) {
 		this.logger.setLevel(Level.TRACE);
 		DataFlowConfidentialityAnalysis analysis = new PCMDataFlowConfidentialityAnalysisBuilder().standalone()
-				.modelProjectName(modelLocation).usePluginActivator(activator).useUsageModel(usageModelPath)
-				.useAllocationModel(allocationPath).useNodeCharacteristicsModel(nodeCharPath).build();
+				.modelProjectName(modelLocation).usePluginActivator(activator)
+				.useCustomResourceProvider(new PCMURIResourceProvider(URI.createFileURI(usageModelPath), URI.createFileURI(allocationPath), URI.createFileURI(nodeCharPath)))
+				.build();
 
 		analysis.setLoggerLevel(Level.TRACE);
 		analysis.initializeAnalysis();
