@@ -1,29 +1,27 @@
 package org.dataflowanalysis.converter.tests;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.google.common.collect.ImmutableMap;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.io.IOException;
-
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import static java.util.Map.entry;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.HashSet;
-
+import org.apache.log4j.Logger;
+import org.dataflowanalysis.converter.micro2dfd.Micro2DFDConverter;
+import org.dataflowanalysis.converter.micro2dfd.MicroConverterModel;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import org.apache.log4j.Logger;
-import org.dataflowanalysis.converter.MicroSecEndConverter;
 
 public class TUHHPipeline {
 
@@ -153,14 +151,18 @@ public class TUHHPipeline {
     }
 
     private void convertJsonToDFD(Path dataset) throws IOException {
-        var microConverter = new MicroSecEndConverter();
+        var microConverter = new Micro2DFDConverter();
         Files.list(dataset)
                 .forEach(path -> {
                     if (Files.isRegularFile(path) && path.toString()
                             .endsWith(".json")) {
                         logger.info(path);
-                        var complete = microConverter.microToDfd(path.toString());
-                        microConverter.storeDFD(complete, path.toString());
+                        MicroConverterModel microConverterModel = new MicroConverterModel(path.toString());
+                        var complete = microConverter.convert(microConverterModel);
+                        complete.save(path.getParent()
+                                .toString(),
+                                path.getFileName()
+                                        .toString());
                     }
                 });
     }
