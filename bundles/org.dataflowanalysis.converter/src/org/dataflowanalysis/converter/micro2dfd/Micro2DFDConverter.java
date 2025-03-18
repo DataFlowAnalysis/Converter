@@ -16,8 +16,7 @@ import org.dataflowanalysis.dfd.datadictionary.*;
 import org.dataflowanalysis.dfd.dataflowdiagram.*;
 
 /**
- * Converts MicroSecEnd models to the data flow diagram and dictionary representation. Inherits from {@link Converter}
- * to utilize shared conversion logic while providing specific functionality for handling MicroSecEnd models.
+ * Converts MicroSecEnd models to the data flow diagram and dictionary representation
  */
 public class Micro2DFDConverter extends Converter {
     private final dataflowdiagramFactory dfdFactory;
