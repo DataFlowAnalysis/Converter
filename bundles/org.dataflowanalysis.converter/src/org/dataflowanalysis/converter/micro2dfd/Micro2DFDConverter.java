@@ -11,6 +11,7 @@ import org.dataflowanalysis.converter.dfd2web.DataFlowDiagramAndDictionary;
 import org.dataflowanalysis.converter.micro2dfd.model.ExternalEntity;
 import org.dataflowanalysis.converter.micro2dfd.model.InformationFlow;
 import org.dataflowanalysis.converter.micro2dfd.model.MicroSecEnd;
+import org.dataflowanalysis.converter.micro2dfd.model.MicroSecEndProcess;
 import org.dataflowanalysis.converter.micro2dfd.model.Service;
 import org.dataflowanalysis.dfd.datadictionary.*;
 import org.dataflowanalysis.dfd.dataflowdiagram.*;
@@ -90,29 +91,26 @@ public class Micro2DFDConverter extends Converter {
     private void createProcesses(MicroSecEnd micro, DataFlowDiagram dfd) {
         for (Service service : micro.services()) {
             var process = dfdFactory.createProcess();
-            process.setEntityName(service.name());
-            process.setId(Integer.toString(idCounter++));
-
-            dfd.getNodes()
-                    .add(process);
-            nodesMap.put(service.name(), process);
-            nodeToLabelNamesMap.put(process, service.stereotypes());
-            nodeToLabelTypeNamesMap.put(process, service.taggedValues());
+            convertNode(dfd, process, service);
         }
     }
 
     private void createExternalEntities(MicroSecEnd micro, DataFlowDiagram dfd) {
-        for (ExternalEntity ee : micro.externalEntities()) {
+        for (ExternalEntity externalEntity : micro.externalEntities()) {
             var external = dfdFactory.createExternal();
-            external.setEntityName(ee.name());
-            external.setId(Integer.toString(idCounter++));
-
-            dfd.getNodes()
-                    .add(external);
-            nodesMap.put(ee.name(), external);
-            nodeToLabelNamesMap.put(external, ee.stereotypes());
-            nodeToLabelTypeNamesMap.put(external, ee.taggedValues());
+            convertNode(dfd, external, externalEntity);
         }
+    }
+
+    private void convertNode(DataFlowDiagram dataFlowDiagram, Node dfdElement, MicroSecEndProcess microElement) {
+        dfdElement.setEntityName(microElement.name());
+        dfdElement.setId(Integer.toString(idCounter++));
+
+        dataFlowDiagram.getNodes()
+                .add(dfdElement);
+        nodesMap.put(microElement.name(), dfdElement);
+        nodeToLabelNamesMap.put(dfdElement, microElement.stereotypes());
+        nodeToLabelTypeNamesMap.put(dfdElement, microElement.taggedValues());
     }
 
     private void createBehavior(DataDictionary dd, LabelType stereotype) {
